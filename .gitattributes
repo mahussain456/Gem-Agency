@@ -1,0 +1,4 @@
+# Agency scripts and profiles must stay LF: a CRLF shebang breaks bash on
+# macOS/Linux, and core.autocrlf=true would otherwise convert them on checkout.
+agency/**/*.sh text eol=lf
+agency/**/*.md text eol=lf

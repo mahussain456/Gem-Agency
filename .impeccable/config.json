@@ -1,0 +1,38 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-14T21:49:48.255Z",
+        "reason": "Asked the user to keep Inter or switch; they replied 'this looks good' to the Inter-based UI. Inter kept for dense table/number legibility; serif titles carry the character."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#000",
+        "createdAt": "2026-09-26T21:24:07.843Z",
+        "reason": "Claude: #000 appears only as CSS mask-image alpha (opaque = visible), never as a painted colour"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "13px",
+        "createdAt": "2026-09-26T21:24:07.934Z",
+        "reason": "Claude: DESIGN.md Typography documents 13px as the body size for detailed forms and supporting content; command.css uses it throughout"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "27px",
+        "createdAt": "2026-09-26T21:35:38.612Z",
+        "reason": "Claude: DESIGN.md Typography documents 27px as the standard page heading at mobile widths; compact density reuses that step"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "3px",
+        "createdAt": "2026-09-26T23:24:48.626Z",
+        "reason": "Claude: pre-existing chat bubble tail corner in ai.js (12px 12px 3px 12px), an intentional speech-bubble shape"
+      }
+    ]
+  }
+}

@@ -1,0 +1,494 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-15T08:52:47.483Z",
+  "title": "Design System: Gem Agency",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15% 0.1084 177.99)",
+          "oklch(26.4% 0.1084 177.99)",
+          "oklch(37.9% 0.1084 177.99)",
+          "oklch(49.3% 0.1084 177.99)",
+          "oklch(60.7% 0.1084 177.99)",
+          "oklch(72.1% 0.1084 177.99)",
+          "oklch(83.6% 0.1084 177.99)",
+          "oklch(95% 0.1084 177.99)"
+        ]
+      },
+      "primary-light": {
+        "role": "primary",
+        "displayName": "Primary Light",
+        "tonalRamp": [
+          "oklch(15% 0.0764 180.36)",
+          "oklch(26.4% 0.0764 180.36)",
+          "oklch(37.9% 0.0764 180.36)",
+          "oklch(49.3% 0.0764 180.36)",
+          "oklch(60.7% 0.0764 180.36)",
+          "oklch(72.1% 0.0764 180.36)",
+          "oklch(83.6% 0.0764 180.36)",
+          "oklch(95% 0.0764 180.36)"
+        ]
+      },
+      "primary-wash": {
+        "role": "primary",
+        "displayName": "Primary Wash",
+        "tonalRamp": [
+          "oklch(15% 0.0359 178.68)",
+          "oklch(26.4% 0.0359 178.68)",
+          "oklch(37.9% 0.0359 178.68)",
+          "oklch(49.3% 0.0359 178.68)",
+          "oklch(60.7% 0.0359 178.68)",
+          "oklch(72.1% 0.0359 178.68)",
+          "oklch(83.6% 0.0359 178.68)",
+          "oklch(95% 0.0359 178.68)"
+        ]
+      },
+      "primary-ink": {
+        "role": "primary",
+        "displayName": "Primary Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0333 175.79)",
+          "oklch(26.4% 0.0333 175.79)",
+          "oklch(37.9% 0.0333 175.79)",
+          "oklch(49.3% 0.0333 175.79)",
+          "oklch(60.7% 0.0333 175.79)",
+          "oklch(72.1% 0.0333 175.79)",
+          "oklch(83.6% 0.0333 175.79)",
+          "oklch(95% 0.0333 175.79)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Primary Hover",
+        "tonalRamp": [
+          "oklch(15% 0.0773 180.49)",
+          "oklch(26.4% 0.0773 180.49)",
+          "oklch(37.9% 0.0773 180.49)",
+          "oklch(49.3% 0.0773 180.49)",
+          "oklch(60.7% 0.0773 180.49)",
+          "oklch(72.1% 0.0773 180.49)",
+          "oklch(83.6% 0.0773 180.49)",
+          "oklch(95% 0.0773 180.49)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0061 236.89)",
+          "oklch(26.4% 0.0061 236.89)",
+          "oklch(37.9% 0.0061 236.89)",
+          "oklch(49.3% 0.0061 236.89)",
+          "oklch(60.7% 0.0061 236.89)",
+          "oklch(72.1% 0.0061 236.89)",
+          "oklch(83.6% 0.0061 236.89)",
+          "oklch(95% 0.0061 236.89)"
+        ]
+      },
+      "canvas-secondary": {
+        "role": "neutral",
+        "displayName": "Canvas Secondary",
+        "tonalRamp": [
+          "oklch(15% 0.0095 234.19)",
+          "oklch(26.4% 0.0095 234.19)",
+          "oklch(37.9% 0.0095 234.19)",
+          "oklch(49.3% 0.0095 234.19)",
+          "oklch(60.7% 0.0095 234.19)",
+          "oklch(72.1% 0.0095 234.19)",
+          "oklch(83.6% 0.0095 234.19)",
+          "oklch(95% 0.0095 234.19)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0094 234.16)",
+          "oklch(26.4% 0.0094 234.16)",
+          "oklch(37.9% 0.0094 234.16)",
+          "oklch(49.3% 0.0094 234.16)",
+          "oklch(60.7% 0.0094 234.16)",
+          "oklch(72.1% 0.0094 234.16)",
+          "oklch(83.6% 0.0094 234.16)",
+          "oklch(95% 0.0094 234.16)"
+        ]
+      },
+      "surface-inset": {
+        "role": "neutral",
+        "displayName": "Surface Inset",
+        "tonalRamp": [
+          "oklch(15% 0.0107 229.51)",
+          "oklch(26.4% 0.0107 229.51)",
+          "oklch(37.9% 0.0107 229.51)",
+          "oklch(49.3% 0.0107 229.51)",
+          "oklch(60.7% 0.0107 229.51)",
+          "oklch(72.1% 0.0107 229.51)",
+          "oklch(83.6% 0.0107 229.51)",
+          "oklch(95% 0.0107 229.51)"
+        ]
+      },
+      "surface-nested": {
+        "role": "neutral",
+        "displayName": "Surface Nested",
+        "tonalRamp": [
+          "oklch(15% 0.0126 233.03)",
+          "oklch(26.4% 0.0126 233.03)",
+          "oklch(37.9% 0.0126 233.03)",
+          "oklch(49.3% 0.0126 233.03)",
+          "oklch(60.7% 0.0126 233.03)",
+          "oklch(72.1% 0.0126 233.03)",
+          "oklch(83.6% 0.0126 233.03)",
+          "oklch(95% 0.0126 233.03)"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised",
+        "tonalRamp": [
+          "oklch(15% 0.0124 232.93)",
+          "oklch(26.4% 0.0124 232.93)",
+          "oklch(37.9% 0.0124 232.93)",
+          "oklch(49.3% 0.0124 232.93)",
+          "oklch(60.7% 0.0124 232.93)",
+          "oklch(72.1% 0.0124 232.93)",
+          "oklch(83.6% 0.0124 232.93)",
+          "oklch(95% 0.0124 232.93)"
+        ]
+      },
+      "raised-strong": {
+        "role": "neutral",
+        "displayName": "Raised Strong",
+        "tonalRamp": [
+          "oklch(15% 0.0152 232.24)",
+          "oklch(26.4% 0.0152 232.24)",
+          "oklch(37.9% 0.0152 232.24)",
+          "oklch(49.3% 0.0152 232.24)",
+          "oklch(60.7% 0.0152 232.24)",
+          "oklch(72.1% 0.0152 232.24)",
+          "oklch(83.6% 0.0152 232.24)",
+          "oklch(95% 0.0152 232.24)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15% 0.0131 229.37)",
+          "oklch(26.4% 0.0131 229.37)",
+          "oklch(37.9% 0.0131 229.37)",
+          "oklch(49.3% 0.0131 229.37)",
+          "oklch(60.7% 0.0131 229.37)",
+          "oklch(72.1% 0.0131 229.37)",
+          "oklch(83.6% 0.0131 229.37)",
+          "oklch(95% 0.0131 229.37)"
+        ]
+      },
+      "border-control": {
+        "role": "neutral",
+        "displayName": "Border Control",
+        "tonalRamp": [
+          "oklch(15% 0.0175 231.69)",
+          "oklch(26.4% 0.0175 231.69)",
+          "oklch(37.9% 0.0175 231.69)",
+          "oklch(49.3% 0.0175 231.69)",
+          "oklch(60.7% 0.0175 231.69)",
+          "oklch(72.1% 0.0175 231.69)",
+          "oklch(83.6% 0.0175 231.69)",
+          "oklch(95% 0.0175 231.69)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15% 0.0034 174.48)",
+          "oklch(26.4% 0.0034 174.48)",
+          "oklch(37.9% 0.0034 174.48)",
+          "oklch(49.3% 0.0034 174.48)",
+          "oklch(60.7% 0.0034 174.48)",
+          "oklch(72.1% 0.0034 174.48)",
+          "oklch(83.6% 0.0034 174.48)",
+          "oklch(95% 0.0034 174.48)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary",
+        "tonalRamp": [
+          "oklch(15% 0.0150 224.54)",
+          "oklch(26.4% 0.0150 224.54)",
+          "oklch(37.9% 0.0150 224.54)",
+          "oklch(49.3% 0.0150 224.54)",
+          "oklch(60.7% 0.0150 224.54)",
+          "oklch(72.1% 0.0150 224.54)",
+          "oklch(83.6% 0.0150 224.54)",
+          "oklch(95% 0.0150 224.54)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Text Muted",
+        "tonalRamp": [
+          "oklch(15% 0.0197 227.39)",
+          "oklch(26.4% 0.0197 227.39)",
+          "oklch(37.9% 0.0197 227.39)",
+          "oklch(49.3% 0.0197 227.39)",
+          "oklch(60.7% 0.0197 227.39)",
+          "oklch(72.1% 0.0197 227.39)",
+          "oklch(83.6% 0.0197 227.39)",
+          "oklch(95% 0.0197 227.39)"
+        ]
+      },
+      "live": {
+        "role": "semantic",
+        "displayName": "Live",
+        "tonalRamp": [
+          "oklch(15% 0.0890 247.54)",
+          "oklch(26.4% 0.0890 247.54)",
+          "oklch(37.9% 0.0890 247.54)",
+          "oklch(49.3% 0.0890 247.54)",
+          "oklch(60.7% 0.0890 247.54)",
+          "oklch(72.1% 0.0890 247.54)",
+          "oklch(83.6% 0.0890 247.54)",
+          "oklch(95% 0.0890 247.54)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success",
+        "tonalRamp": [
+          "oklch(15% 0.1212 158.73)",
+          "oklch(26.4% 0.1212 158.73)",
+          "oklch(37.9% 0.1212 158.73)",
+          "oklch(49.3% 0.1212 158.73)",
+          "oklch(60.7% 0.1212 158.73)",
+          "oklch(72.1% 0.1212 158.73)",
+          "oklch(83.6% 0.1212 158.73)",
+          "oklch(95% 0.1212 158.73)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning",
+        "tonalRamp": [
+          "oklch(15% 0.1178 81.96)",
+          "oklch(26.4% 0.1178 81.96)",
+          "oklch(37.9% 0.1178 81.96)",
+          "oklch(49.3% 0.1178 81.96)",
+          "oklch(60.7% 0.1178 81.96)",
+          "oklch(72.1% 0.1178 81.96)",
+          "oklch(83.6% 0.1178 81.96)",
+          "oklch(95% 0.1178 81.96)"
+        ]
+      },
+      "critical": {
+        "role": "semantic",
+        "displayName": "Critical",
+        "tonalRamp": [
+          "oklch(15% 0.1163 11.34)",
+          "oklch(26.4% 0.1163 11.34)",
+          "oklch(37.9% 0.1163 11.34)",
+          "oklch(49.3% 0.1163 11.34)",
+          "oklch(60.7% 0.1163 11.34)",
+          "oklch(72.1% 0.1163 11.34)",
+          "oklch(83.6% 0.1163 11.34)",
+          "oklch(95% 0.1163 11.34)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page headline",
+        "purpose": "Core page headings; overview has separate responsive sizing."
+      },
+      "metadata": {
+        "displayName": "Operational metadata",
+        "purpose": "Compact timestamps, provenance, and supporting progress copy."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raised",
+        "value": "0 12px 32px #0005",
+        "purpose": "Shared raised-shadow token; main command panels remain flat."
+      },
+      {
+        "name": "modal",
+        "value": "0 30px 80px -20px rgba(0,0,0,.9)",
+        "purpose": "Inherited modal separation."
+      },
+      {
+        "name": "mobile-navigation",
+        "value": "30px 0 60px -30px #000",
+        "purpose": "Open mobile drawer."
+      },
+      {
+        "name": "field-focus",
+        "value": "0 0 0 3px var(--ac-w)",
+        "purpose": "Focused form field."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(.2,.7,.2,1)",
+        "purpose": "Inherited interface easing."
+      },
+      {
+        "name": "state-transition",
+        "value": "160ms",
+        "purpose": "Color, background, border, and focus changes."
+      },
+      {
+        "name": "button-press",
+        "value": "120ms",
+        "purpose": "Button transform on press."
+      },
+      {
+        "name": "page-entry",
+        "value": "460ms",
+        "purpose": "Inherited page entrance."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation:none!important;transition:none!important;scroll-behavior:auto!important",
+        "purpose": "Applied to all elements and pseudo-elements under prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide-rail",
+        "value": "1600px"
+      },
+      {
+        "name": "compact-workspace",
+        "value": "1200px"
+      },
+      {
+        "name": "icon-navigation",
+        "value": "1023px"
+      },
+      {
+        "name": "stack-rail-and-builder",
+        "value": "980px"
+      },
+      {
+        "name": "navigation-drawer",
+        "value": "767px"
+      },
+      {
+        "name": "linear-command-layout",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary Button from the implemented command-center button cascade.",
+      "html": "<button class=\"ds-button-primary\">New website</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border:1px solid var(--line-2,#3d484e);border-radius:6px;font:500 13px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);cursor:pointer;white-space:nowrap;transition:background 160ms cubic-bezier(.2,.7,.2,1),color 160ms cubic-bezier(.2,.7,.2,1),transform 120ms cubic-bezier(.2,.7,.2,1);background:var(--ac,#64d4bd);color:#0f2822;font-weight:650;border-color:var(--ac,#64d4bd);}.ds-button-primary:hover{background:#9de8d9}.ds-button-primary:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}.ds-button-primary:active:not(:disabled){transform:translateY(1px) scale(.985)}.ds-button-primary:disabled{opacity:.42;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary Button from the implemented command-center button cascade.",
+      "html": "<button class=\"ds-button-secondary\">View growth plan</button>",
+      "css": ".ds-button-secondary{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border:1px solid var(--line-2,#3d484e);border-radius:6px;font:500 13px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);cursor:pointer;white-space:nowrap;transition:background 160ms cubic-bezier(.2,.7,.2,1),color 160ms cubic-bezier(.2,.7,.2,1),transform 120ms cubic-bezier(.2,.7,.2,1);background:#232b2f;color:var(--tx,#f4f7f6);font-weight:500;}.ds-button-secondary:hover{background:#303b40}.ds-button-secondary:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}.ds-button-secondary:active:not(:disabled){transform:translateY(1px) scale(.985)}.ds-button-secondary:disabled{opacity:.42;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Ghost Button from the implemented command-center button cascade.",
+      "html": "<button class=\"ds-button-ghost\">View details</button>",
+      "css": ".ds-button-ghost{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border:1px solid var(--line-2,#3d484e);border-radius:6px;font:500 13px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);cursor:pointer;white-space:nowrap;transition:background 160ms cubic-bezier(.2,.7,.2,1),color 160ms cubic-bezier(.2,.7,.2,1),transform 120ms cubic-bezier(.2,.7,.2,1);background:transparent;color:var(--tx-2,#b7c3c8);font-weight:500;}.ds-button-ghost:hover{background:var(--raised,#22292d)}.ds-button-ghost:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}.ds-button-ghost:active:not(:disabled){transform:translateY(1px) scale(.985)}.ds-button-ghost:disabled{opacity:.42;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none}}"
+    },
+    {
+      "name": "Brief Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "A visible label, inset fill, and teal focus for website briefs.",
+      "html": "<label class=\"ds-field\">Describe your website<textarea placeholder=\"Describe the result you want\"></textarea></label>",
+      "css": ".ds-field{display:block;font:500 12px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);color:var(--tx-2,#b7c3c8)}.ds-field textarea{display:block;width:calc(100% - 24px);margin-top:6px;min-height:80px;padding:8px 11px;border:1px solid var(--line-2,#3d484e);border-radius:9px;background:#151b1e;font:400 13px/1.45 var(--sans, Inter, \"Segoe UI\", sans-serif);color:var(--tx,#f4f7f6);resize:vertical;caret-color:var(--ac,#64d4bd);transition:border-color 160ms cubic-bezier(.2,.7,.2,1),box-shadow 160ms cubic-bezier(.2,.7,.2,1)}.ds-field textarea::placeholder{color:var(--tx-3,#9baab1);opacity:1}.ds-field textarea:focus{border-color:var(--ac,#64d4bd);box-shadow:0 0 0 3px var(--ac-w,#203c36)}.ds-field textarea:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-field textarea{transition:none}}"
+    },
+    {
+      "name": "Active Navigation",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "The selected destination uses teal and an inset left indicator.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Example navigation\"><a href=\"#overview\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z\"/></svg><span>Overview</span></a></nav>",
+      "css": ".ds-nav a{display:flex;align-items:center;gap:11px;height:41px;margin:3px 0;padding:0 10px;border-radius:5px;background:#23322f;box-shadow:inset 2px 0 var(--ac,#64d4bd);color:var(--ac,#64d4bd);font:500 13px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);text-decoration:none;transition:background 160ms cubic-bezier(.2,.7,.2,1),color 160ms cubic-bezier(.2,.7,.2,1)}.ds-nav svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.ds-nav a:hover{background:var(--raised,#22292d)}.ds-nav a:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-nav a{transition:none}}"
+    },
+    {
+      "name": "Mode Chip",
+      "kind": "chip",
+      "description": "The unselected builder-mode chip; selected treatment is documented in DESIGN.md.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"false\">Growth campaign</button>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:20px;border:1px solid var(--line,#2b3337);font:500 12px/1 var(--sans, Inter, \"Segoe UI\", sans-serif);color:var(--tx-2,#b7c3c8);background:none;cursor:pointer;transition:border-color 160ms cubic-bezier(.2,.7,.2,1),color 160ms cubic-bezier(.2,.7,.2,1)}.ds-chip:hover{border-color:var(--line-2,#3d484e);color:var(--tx,#f4f7f6)}.ds-chip:focus-visible{outline:2px solid var(--ac,#64d4bd);outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-chip{transition:none}}"
+    },
+    {
+      "name": "Status Tag",
+      "kind": "chip",
+      "description": "Text and a status dot accompany a semantic color; this example is build completion.",
+      "html": "<span class=\"ds-tag\"><span aria-hidden=\"true\"></span>Build complete</span>",
+      "css": ".ds-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:20px;font:500 11px/1.35 var(--sans, Inter, \"Segoe UI\", sans-serif);white-space:nowrap;background:var(--ok-w,rgba(74,222,155,.11));color:var(--ok,#78dba6);border:1px solid transparent}.ds-tag>span{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}"
+    },
+    {
+      "name": "Content Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat, bordered panel with a separated heading and padded body.",
+      "html": "<section class=\"ds-panel\"><header><h2>Search performance</h2></header><div>Connect a search property to see measured results.</div></section>",
+      "css": ".ds-panel{display:flex;flex-direction:column;min-width:0;overflow:hidden;background:var(--card,#1a1f22);border:1px solid var(--line,#2b3337);border-radius:12px;box-shadow:none;color:var(--tx,#f4f7f6);font:400 14px/1.5 var(--sans, Inter, \"Segoe UI\", sans-serif)}.ds-panel header{display:flex;align-items:center;min-height:58px;padding:0 18px;border-bottom:1px solid var(--line,#2b3337)}.ds-panel h2{margin:0;font:600 16px/1.3 var(--sans, Inter, \"Segoe UI\", sans-serif);letter-spacing:-.01em}.ds-panel>div{padding:18px;color:var(--tx-2,#b7c3c8)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Growth Command Center",
+    "overview": "Gem Agency is a compact operating workspace in graphite and teal. Neutral surfaces organize projects, tangible website output, decisions, and measured growth. The gemstone-G identity gives the workspace its recognizable signature; the surrounding interface remains restrained and readable.\n\nThe same visual language carries idea intake through delivery, review, and growth evidence. Emphasis comes from useful hierarchy, surface tone, and a clear action color. Preserve the distinction between completed builds and published websites, and show unavailable measurements as an explicit state.",
+    "keyCharacteristics": [
+      "Graphite canvas with subtly separated neutral panels.",
+      "Teal actions and selection, with distinct semantic status colors.",
+      "Compact sans-serif hierarchy and aligned numerical evidence.",
+      "Persistent desktop navigation and a linear mobile workspace.",
+      "Actual website previews and the faceted gemstone-G identity."
+    ],
+    "rules": [
+      {
+        "name": "The Action Accent Rule",
+        "body": "Use teal for action, selection, focus, and measured chart marks. Preserve semantic colors for status.",
+        "section": "colors"
+      },
+      {
+        "name": "The Evidence Hierarchy Rule",
+        "body": "Make the value and next action easy to scan, and keep source, status, and time context immediately adjacent.",
+        "section": "typography"
+      },
+      {
+        "name": "The Preserve the Workflow Rule",
+        "body": "Stack the surrounding content on small screens while retaining the board's horizontal stage order.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do reuse the graphite surfaces, teal action color, and compact sans-serif hierarchy.",
+      "Do pair status color with visible text and preserve keyboard focus.",
+      "Do use the gemstone-G asset and actual project previews where available.",
+      "Do keep measurement provenance and unavailable states visible.",
+      "Do preserve the five-lane reading order with horizontal scrolling on mobile.",
+      "Do honor reduced-motion preferences."
+    ],
+    "donts": [
+      "Don't revive the superseded amethyst atmosphere, serif core page headings, or decorative panel glow.",
+      "Don't use fabricated metrics or imply that a completed build is already published.",
+      "Don't force every page into the overview's dashboard composition.",
+      "Don't hide useful workflow steps to make the mobile layout fit."
+    ]
+  }
+}

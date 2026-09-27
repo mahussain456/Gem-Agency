@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mission-control",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["server.py"],
+      "port": 51764,
+      "autoPort": false
+    }
+  ]
+}

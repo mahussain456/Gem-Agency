@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gem Agency</title>
+<link rel="icon" type="image/svg+xml" href="/app/q/brand/gem-growth.svg">
+<!-- Inter, Instrument Serif and JetBrains Mono; every stack in quantum.css falls
+     back to fonts Windows ships (Segoe UI, Palatino, Cascadia) when offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app/q/css/quantum.css">
+<link rel="stylesheet" href="/app/q/css/command.css">
+<link rel="stylesheet" href="/app/q/css/motion.css">
+<link rel="stylesheet" href="/app/q/css/jarvis.css">
+<!-- Apply saved appearance before first paint so a chosen accent never flashes
+     the default. prefs.js owns these attributes after boot. -->
+<script>
+try {
+  var p = JSON.parse(localStorage.getItem("gem-prefs") || "{}"), d = document.documentElement;
+  var rm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  d.dataset.accent = p.accent || "teal";
+  d.dataset.density = p.density === "compact" ? "compact" : "comfortable";
+  d.dataset.motion = rm ? "off" : (p.motion || "full");
+  d.dataset.ambient = (p.ambient === true && d.dataset.motion !== "off") ? "on" : "off";
+} catch (e) {}
+</script>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="app" id="app">
+
+  <aside class="side" id="side">
+    <div class="side-top">
+      <img class="mark" src="/app/q/brand/gem-growth.svg" alt="" aria-hidden="true">
+      <div class="wordmark"><b>Gem Agency</b><span>Build. Launch. Grow.</span></div>
+    </div>
+    <button class="side-search" id="cmdField" aria-label="Search or run a command">
+      <svg viewBox="0 0 24 24"><path d="M11 3a8 8 0 100 16 8 8 0 000-16zM21 21l-4.3-4.3"/></svg>
+      <span>Search</span><kbd>Ctrl K</kbd>
+    </button>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="side-foot">
+      <div class="gw" id="gwChip"><span class="led"></span><span>Brain…</span></div>
+      <button class="collapse-btn" id="collapseBtn" title="Collapse navigation">
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>Collapse</span>
+      </button>
+    </div>
+  </aside>
+  <div class="scrim-nav" id="navScrim"></div>
+
+  <div class="main">
+    <header class="bar">
+      <button class="iconbtn menubtn" id="menuBtn" aria-label="Open navigation">
+        <svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div class="crumb" id="crumb">Gem Agency</div>
+      <span class="bar-sp"></span>
+      <button class="livechip" id="agentsBtn" title="Monitor">
+        <span class="led"></span><span class="txt" id="liveTxt">Agents idle</span>
+      </button>
+      <button class="iconbtn" id="prefsBtn" title="Customise" aria-label="Customise appearance and voice">
+        <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      </button>
+      <button class="iconbtn" id="bellBtn" title="Needs your attention" aria-label="Needs your attention">
+        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+        <span class="badge" id="bellCount" hidden>0</span>
+      </button>
+      <button class="btn pri" id="newBtn" aria-label="New website">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> <span class="btn-label">New website</span>
+      </button>
+    </header>
+
+    <main class="work" id="work" tabindex="-1">
+      <div class="page"><div class="skel skel-row" style="width:30%;height:22px"></div></div>
+    </main>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Details"></aside>
+<div id="modalRoot"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="/app/q/js/boot.js"></script>
+</body>
+</html>

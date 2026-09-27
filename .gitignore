@@ -1,0 +1,38 @@
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+*.log
+*.err.log
+launcher-logs/
+_mission_control_inline_check.js
+uploads/
+.claude/settings.local.json
+.agency_token
+.gsc_credentials.json
+.gsc_token.json
+agency.db
+agency.db-wal
+agency.db-shm
+workspace/
+
+# Cleanup 2026-09-02: prevent debris from re-accumulating
+_inline_*.js
+_check_backup.js
+*.bak-*
+*.backup-*
+*.tar.gz
+verification/index-inline*.js
+verification/*.sse
+verification/*.png
+.dataforseo_credentials.json
+.provider_credentials.json
+.jev_credentials.json
+.muapi_credentials.json
+
+# Runtime databases: created on first start, hold chat history and run data
+*.db
+*.db-wal
+*.db-shm
+# Rejected UI explorations (local only)
+docs/ui-previews/
