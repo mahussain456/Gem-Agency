@@ -262,3 +262,32 @@ class ImageFieldTests(unittest.TestCase):
         self.assertEqual(out["image_url"], "https://cdn.muapi.ai/a.png")
         with self.assertRaises(ValueError):
             media.build_payload(m, {"prompt": "slow push in"})
+
+
+class TransportTests(unittest.TestCase):
+    """Muapi's Let's Encrypt Root YE chain fails OpenSSL's Windows-store path."""
+
+    def test_requests_verify_with_the_os_trust_store(self):
+        import ssl
+        self.assertIsInstance(media._TLS, ssl.SSLContext)
+        self.assertEqual(media._TLS.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(media._TLS.check_hostname)
+        seen = {}
+
+        def fake(req, timeout=None, context=None):
+            seen["context"] = context
+            return mock.MagicMock(__enter__=lambda s: io.BytesIO(b'{"url": "https://cdn.muapi.ai/x.png"}'),
+                                  __exit__=lambda *a: False)
+        with mock.patch.object(media, "_key", return_value="k"), \
+             mock.patch.object(media.urllib.request, "urlopen", side_effect=fake):
+            media._request("GET", "/api/v1/ping")
+        self.assertIs(seen["context"], media._TLS)
+
+    def test_nested_credit_error_is_readable(self):
+        inner = json.dumps({"error": {"code": "INSUFFICIENT_CREDITS", "message": "Insufficient credits."}})
+        live = ('{"detail":{"error":{"code":"INSUFFICIENT_CREDITS","message":"Insufficient credits. '
+                'A credit balance > 0 is required for file uploads."}}}')   # captured from Muapi
+        for body in (live, json.dumps({"detail": inner}), json.dumps(inner), inner):
+            msg = media._detail(body)
+            self.assertIn("no credits", msg)
+            self.assertNotIn("{", msg)

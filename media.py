@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -130,6 +131,25 @@ def status() -> dict[str, Any]:
 
 # ---------------------------------------------------------------- HTTP
 
+def _tls_context() -> ssl.SSLContext:
+    """Verify certificates with the operating system, as Chrome and curl do.
+
+    Muapi's certificate chains to Let's Encrypt's newer Root YE. Python's
+    OpenSSL builds that chain from the Windows store, picks up an expired
+    cross-certificate and rejects a valid site ("certificate has expired").
+    The OS verifier builds the chain correctly. Expired or untrusted
+    certificates are still refused.
+    """
+    try:
+        import truststore
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except ImportError:
+        return ssl.create_default_context()
+
+
+_TLS = _tls_context()
+
+
 def _request(method: str, path: str, body: bytes | None = None, headers: dict | None = None,
              timeout: float = 60) -> dict[str, Any]:
     key = _key()
@@ -138,7 +158,7 @@ def _request(method: str, path: str, body: bytes | None = None, headers: dict | 
     h = {"x-api-key": key, "Accept": "application/json", **(headers or {})}
     req = urllib.request.Request(API + path, data=body, method=method, headers=h)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_TLS) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -151,18 +171,34 @@ def _request(method: str, path: str, body: bytes | None = None, headers: dict | 
         raise MediaError(f"Muapi returned something that is not JSON: {raw[:160]}") from None
 
 
+_NO_CREDITS = "your Muapi account has no credits. Top up at muapi.ai, then try again (uploads need a balance too)"
+
+
 def _detail(text: str) -> str:
-    try:
-        d = json.loads(text)
-        for k in ("detail", "error", "message"):
-            v = d.get(k) if isinstance(d, dict) else None
-            if isinstance(v, dict):
-                v = v.get("message") or json.dumps(v)[:200]
-            if v:
-                return str(v)[:300]
-    except (json.JSONDecodeError, AttributeError):
-        pass
-    return text.strip()[:300] or "no detail"
+    """The readable message in a Muapi error body, however deeply it is nested.
+
+    Seen in the wild: {"detail": {"error": {"code": ..., "message": ...}}},
+    plain {"detail": "..."}, and JSON encoded inside a string.
+    """
+    def walk(v: Any, depth: int = 0) -> str:
+        if depth > 5 or v is None:
+            return ""
+        if isinstance(v, str):
+            if v.lstrip()[:1] in ("{", '"'):
+                try:
+                    return walk(json.loads(v), depth + 1)
+                except json.JSONDecodeError:
+                    pass
+            return v
+        if isinstance(v, dict):
+            if v.get("code") == "INSUFFICIENT_CREDITS":
+                return _NO_CREDITS
+            for k in ("detail", "error", "message"):
+                found = walk(v.get(k), depth + 1)
+                if found:
+                    return found
+        return ""
+    return (walk(text) or text.strip())[:300] or "no detail"
 
 
 # ---------------------------------------------------------------- uploads
@@ -366,7 +402,7 @@ def _download(job: dict[str, Any], url: str, i: int) -> str:
     folder = MEDIA_DIR / job["id"]
     folder.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "GemAgency/1.0"})
-    with urllib.request.urlopen(req, timeout=300) as resp:
+    with urllib.request.urlopen(req, timeout=300, context=_TLS) as resp:
         ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         ext = _EXT.get(ctype) or Path(url.split("?")[0]).suffix.lower() or ".bin"
         if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm", ".mov"):
