@@ -1,0 +1,34 @@
+diff --git a/src/server.ts b/src/server.ts
+index 737e442..c2000c3 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -9,7 +9,10 @@ import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository
+ import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
+ import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
+ import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
+-import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
++import {
++  getOptionalEnvValue,
++  isHostedServerAuthMode,
++} from "@/server/lib/runtime-env";
+ import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
+ import {
+   createOpenSeoOAuthProvider,
+@@ -53,7 +56,16 @@ async function appFetch(request: Request): Promise<Response> {
+     return response;
+   }
+   const headers = new Headers(response.headers);
+-  headers.set("Content-Security-Policy", "frame-ancestors 'self'");
++  // Gem Agency: its dashboard on this machine embeds OpenSEO. Only loopback
++  // origins are accepted, so the clickjacking protection above still holds
++  // against every other page.
++  const embedders = ((await getOptionalEnvValue("OPENSEO_FRAME_ANCESTORS")) ?? "")
++    .split(/\s+/)
++    .filter((o) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?$/.test(o));
++  headers.set(
++    "Content-Security-Policy",
++    ["frame-ancestors 'self'", ...embedders].join(" "),
++  );
+   return new Response(response.body, {
+     status: response.status,
+     statusText: response.statusText,

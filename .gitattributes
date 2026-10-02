@@ -2,3 +2,4 @@
 # macOS/Linux, and core.autocrlf=true would otherwise convert them on checkout.
 agency/**/*.sh text eol=lf
 agency/**/*.md text eol=lf
+openseo.patch -text

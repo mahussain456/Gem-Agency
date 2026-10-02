@@ -50,6 +50,25 @@ class FakeBrowser:
             raise ValueError("element not found")
         return PNG if name in ("screenshot", "zoom") else "OK"
 
+    # computer use 2.0: structure
+    def read_page(self, start=0):
+        self.calls.append(("read_page", start))
+        return 'URL: https://example.com/\nTitle: Example\n\nElements (1):\n  [1] link "Pricing" -> /pricing'
+
+    def click_ref(self, ref):
+        self.calls.append(("click_ref", ref))
+        if int(ref) != 1:
+            raise ValueError(f"there is no element {ref} on this page now; call read_page again")
+        return 'Clicked [1] "Pricing". Now at https://example.com/pricing'
+
+    def type_ref(self, ref, text, submit=False):
+        self.calls.append(("type_ref", ref, text, submit))
+        return f'Typed "{text}" into [{ref}]'
+
+    def back(self):
+        self.calls.append(("back",))
+        return "Went back. Now at https://example.com/"
+
     def close(self):
         pass
 
@@ -87,6 +106,8 @@ class AgentLoopTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         for p in (mock.patch.object(computer, "SESSIONS_DIR", Path(self.tmp.name)),
                   mock.patch.object(computer, "Browser", FakeBrowser),
+                  # Claude alone: the fallback to ChatGPT has its own tests, and must never reach the real API
+                  mock.patch.object(computer, "_brain_order", return_value=["claude"]),
                   mock.patch.object(computer.socket, "getaddrinfo",
                                     return_value=[(0, 0, 0, "", ("93.184.215.14", 0))])):
             p.start()
@@ -95,7 +116,7 @@ class AgentLoopTests(unittest.TestCase):
     def run_session(self, turns, **kw):
         sent = []
 
-        def turn(client, model, messages):
+        def turn(client, model, messages, **kw):
             sent.append([dict(m) for m in messages])
             return turns.pop(0)
         with mock.patch.object(computer, "_claude_client", return_value=(object(), "claude-opus-5-5")), \
@@ -157,7 +178,7 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("step limit", s.error)
 
     def test_operator_stop(self):
-        def turn(client, model, messages):
+        def turn(client, model, messages, **kw):
             sess.stop()
             return msg(use("screenshot"))
         with mock.patch.object(computer, "_claude_client", return_value=(object(), "m")), \
@@ -221,6 +242,29 @@ class RealBrowserTests(unittest.TestCase):
         self.assertTrue(b.act("zoom", {"region": [100, 100, 400, 250]}).startswith(b"\x89PNG"))
         with self.assertRaises(ValueError):
             b.act("left_click", {"coordinate": [5000, 10]})
+
+    def test_structure_tools(self):
+        b = self.b
+        b.page.set_content("""<title>Shop</title><main><h1>Roof repair</h1>
+          <input placeholder="Search" id=s><input type=password id=p placeholder="Password">
+          <input name=cardnumber id=c placeholder="Card"><input autocomplete="cc-number" id=c2>
+          <a href="#p" onclick="document.querySelector('h1').textContent='Pricing'">Pricing</a>
+          <a href="#h" style="display:none">Hidden</a></main>""")
+        page = b.read_page()
+        self.assertIn("h1: Roof repair", page)
+        self.assertIn('[1] field "Search"', page)
+        self.assertIn('link "Pricing" -> #p', page)
+        self.assertNotIn("Hidden", page)                      # invisible elements are not offered
+        b.type_ref(1, "roof repair")
+        self.assertEqual(b.page.input_value("#s"), "roof repair")
+        for ref in (2, 3, 4):                                  # password, card by name, card by autocomplete
+            with self.assertRaisesRegex(ValueError, "never types"):
+                b.type_ref(ref, "secret")
+        self.assertEqual(b.page.input_value("#p"), "")
+        b.click_ref(5)
+        self.assertEqual(b.page.text_content("h1"), "Pricing")
+        with self.assertRaisesRegex(ValueError, "read_page again"):
+            b.click_ref(42)
 
     def test_loopback_is_blocked_at_the_network_layer(self):
         with self.assertRaises(ValueError):

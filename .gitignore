@@ -36,3 +36,6 @@ verification/*.png
 *.db-shm
 # Rejected UI explorations (local only)
 docs/ui-previews/
+
+# OpenSEO checkout and build (installed by openseo.py; the patch is tracked)
+openseo/

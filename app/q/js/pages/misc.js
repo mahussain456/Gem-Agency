@@ -71,7 +71,7 @@ export async function keywords(el) {
       { name: "volume", label: "Monthly volume", type: "number", placeholder: "optional" },
       { name: "position", label: "Current position", type: "number", placeholder: "optional" },
       { name: "url", label: "Target URL" },
-      { name: "source", label: "Source", placeholder: "e.g. GSC export, Ahrefs, manual guess" },
+      { name: "source", label: "Source", placeholder: "e.g. GSC export, OpenSEO, manual guess" },
       { name: "client_id", label: "Client", type: "select", options:
         [{ value: "", label: "— none —" }].concat(clients.map(c => ({ value: c.id, label: c.name }))) },
     ],
@@ -191,8 +191,13 @@ export async function integrations(el) {
     gsc: { n: "Google Search Console", d: "Impressions, clicks and real positions", ic: "chart" },
     ga4: { n: "Google Analytics 4", d: "Traffic and conversions", ic: "trend" },
     dataforseo: { n: "DataForSEO", d: "Search volume, difficulty, live rankings, backlinks", ic: "chart" },
-    ahrefs: { n: "Ahrefs", d: "Backlinks, volumes, competitors", ic: "link" },
+    openseo: { n: "OpenSEO", d: "Keywords, rank tracking, backlinks, site audits, AI visibility (open source, runs on this PC)", ic: "seo" },
     stripe: { n: "Stripe", d: "Billing and verified MRR", ic: "money" },
+    brain: { n: "Brain", d: "Claude, then ChatGPT, then Ollama", ic: "ai" },
+    claude: { n: "Claude", d: "Anthropic API", ic: "ai" },
+    chatgpt: { n: "ChatGPT", d: "OpenAI API", ic: "ai" },
+    ollama: { n: "Ollama", d: "Local models on this computer", ic: "bot" },
+    jev: { n: "Jev", d: "Typed decisions", ic: "bot" },
   };
   const CLS = { connected: ["Connected", "t-ok"], running: ["Connected", "t-ok"], configured: ["Connected", "t-ok"],
                 error: ["Needs attention", "t-crit"], not_connected: ["Not connected", "t-idle"] };
@@ -220,13 +225,17 @@ export async function integrations(el) {
                    <button class="btn sm" id="dfsCheck">${icon("refresh")} Re-check</button>
                    <button class="btn sm" id="dfsOff">Disconnect</button></div>`
               : `<form id="dfsForm" style="display:grid;gap:7px">
-                   <div class="s">Pay-as-you-go. Credentials are stored locally and never committed.</div>
+                   <div class="s">Pay-as-you-go. Used by the dashboard and by OpenSEO, so you enter it once. Stored locally, never committed.</div>
                    <input id="dfsLogin" placeholder="DataForSEO login (email)" required
                      style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:13.5px inherit">
                    <input id="dfsPass" type="password" placeholder="API password" required
                      style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:13.5px inherit">
                    <button class="btn pri sm" type="submit">${icon("plug")} Connect</button>
                  </form>`}`
+          : k === "openseo" ? `<div class="s" style="margin-bottom:9px">${v.state === "running"
+                ? (v.dataforseo ? "Running on this computer with your DataForSEO key." : "Running on this computer. Add the DataForSEO key here to fill it with data.")
+                : v.state === "configured" ? "Installed. It starts when you open it." : "Not installed yet."}</div>
+              <button class="btn ${v.state === "not_connected" ? "pri " : ""}sm" data-go="seo">${icon("seo")} ${v.state === "not_connected" ? "Set up OpenSEO" : "Open OpenSEO"}</button>`
           : k === "gsc" ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn pri sm" id="gscConnect">${icon("plug")} ${v.state === "error" ? "Reconnect" : "Connect"}</button>
             <button class="btn sm" id="gscCheck">${icon("refresh")} Re-check</button></div>`

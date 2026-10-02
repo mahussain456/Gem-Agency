@@ -15,10 +15,11 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 | **Overview** | Every website with a real preview (a built page or a screenshot of the live site), its stage, and the one decision waiting on you. |
 | **Websites** | Each project's pipeline: idea → research → design/content → build and checks → review → launch → growth. Includes a "Mark as live" step that asks for the published address. |
 | **Builder** | Pipeline runs, their stages and their outputs. |
+| **OpenSEO** | The open-source SEO suite [every-app/open-seo](https://github.com/every-app/open-seo), running on this PC and shown inside the dashboard: keyword research, rank tracking, backlinks, domain overview, site audits, AI search visibility and Search Console insights. The dashboard installs, starts and stops it; opening the page starts it. Its SEO data comes from DataForSEO, using the same key the dashboard uses. |
 | **Growth (SEO / AEO / GEO)** | Audits, findings, keywords and backlinks. These stages always run on Claude or ChatGPT, never on the local model. With no data source connected, it says so and invents nothing. |
 | **Approvals** | Anything that needs your sign-off before the pipeline continues. |
 | **Jarvis** | Voice assistant. Open conversation, like ChatGPT voice. Hands-free mode, interrupt it by speaking, sentence-by-sentence speech. It can navigate and trigger actions from a checked list. |
-| **Computer use** | Claude drives your installed Chrome through Playwright (headless, or visible so you can watch) to do browser tasks. Local and private network addresses are blocked. Sessions are saved under `workspace/computer`. |
+| **Computer use 2.0** | An AI operates an isolated Chrome on this PC. It works two ways in one task: through the page's structure (read the page, click or type by element number, fetch a URL's raw response for robots.txt, sitemaps, headers and redirects) and through the screen for anything visual. Three brains: Claude and ChatGPT (paid API calls; they read and see), and **Local** on Ollama (free and private; it reads only). Auto tries Claude, then ChatGPT, then Local, handing over only before anything is clicked. ChatGPT's safety checks wait for your approval; password and card fields refuse input. Sessions are saved under `workspace/computer`. |
 | **Image & Video** | 402 image and video models from [Open Generative AI](https://github.com/anil-matcha/open-generative-ai), run through the Muapi API. Supports text-to-X, image-to-X and uploads. |
 | **Models** | Connect Claude, ChatGPT and Ollama. See each provider's health and the order the brain chain will try them. |
 
@@ -45,8 +46,8 @@ Every AI call tries **Claude → ChatGPT → Ollama (local)**, in that order.
 - *Optional:*
   - a Muapi API key (Image & Video)
   - Google Search Console OAuth credentials (real search data)
-  - DataForSEO credentials (keyword and backlink data)
-- *Optional:* Node 18+, only to re-sync the media model catalogue.
+  - DataForSEO credentials (keyword and backlink data, in the dashboard and in OpenSEO; pay as you go)
+- *Optional:* Node 20+ and git, for OpenSEO (and to re-sync the media model catalogue). About 1 GB of disk for OpenSEO.
 
 ---
 
@@ -103,7 +104,8 @@ After you connect a provider, the model list comes from the account itself, so m
 |---|---|---|
 | Image & Video (Muapi) | Image & Video → API key, or `MUAPI_API_KEY` | `.muapi_credentials.json` |
 | Google Search Console | Integrations → Search Console (OAuth client ID and secret) | `.gsc_credentials.json`, `.gsc_token.json` |
-| DataForSEO | Integrations → DataForSEO | `.dataforseo_credentials.json` |
+| DataForSEO | Integrations → DataForSEO. Entered once; the dashboard and OpenSEO both use it, and a running OpenSEO restarts with a new key | `.dataforseo_credentials.json` |
+| OpenSEO | OpenSEO in the sidebar → Install OpenSEO (one time, a few minutes). Runs on `127.0.0.1:3001`; set `OPENSEO_PORT` to change it | `openseo/` (gitignored checkout), `workspace/openseo/` |
 | Hermes gateway (optional, advanced) | Runs separately on `127.0.0.1:8643`; set `HERMES_HOME` if it is not in `%LOCALAPPDATA%\hermes` | its own `.env` |
 
 ### Configuration
@@ -114,6 +116,8 @@ After you connect a provider, the model list comes from the account itself, so m
 | `MISSION_CONTROL_HOST` | `127.0.0.1` | Bind address. Keep it on loopback unless you add your own auth in front. |
 | `HERMES_HOME` | `%LOCALAPPDATA%\hermes` | Hermes gateway home (optional) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`, `MUAPI_API_KEY` | — | Alternatives to entering keys in the UI |
+| `GEM_COMPUTER_OPENAI_MODEL` | `gpt-6.1-sol` | The OpenAI model used when ChatGPT drives Computer use |
+| `GEM_COMPUTER_LOCAL_MODEL` | best installed tool-calling model (e.g. `qwen2.5:14b`) | The Ollama model used by the free Local brain |
 
 ---
 
@@ -127,6 +131,15 @@ After you connect a provider, the model list comes from the account itself, so m
 6. **Ctrl K** opens the command palette to jump anywhere.
 
 ---
+
+### OpenSEO
+
+OpenSEO is installed by the dashboard from GitHub at a tested commit, with one small local patch (`openseo.patch`) that lets this dashboard, and only loopback origins, embed it. It runs the official Docker image's steps natively (database migrations, a build that is skipped while nothing changed, then `vite preview`), so Docker is not needed.
+
+- It has no login in this mode, so it only ever listens on `127.0.0.1`.
+- It gets a clean environment: system basics, its own settings and the DataForSEO key. Nothing else from your environment reaches its files.
+- Telemetry is off.
+- Without a DataForSEO key, its site audit and Search Console views work; keyword, backlink, ranking and AI-visibility data stay empty until you add one.
 
 ## Tests
 
@@ -155,10 +168,12 @@ runner.py          Persistent pipeline runner
 playbooks.py       Pipeline definitions (website build, SEO campaign)
 providers.py       Brain chain: Claude → ChatGPT → Ollama, health tracking, streaming
 jarvis.py          Conversational voice endpoint and action vocabulary
-computer.py        Claude computer use over Playwright + Chrome
+computer.py        Computer use 2.0: structure + screen tools; Claude, ChatGPT or Local (Ollama)
 media.py           Muapi client for Image & Video
 browser.py         Headless screenshots
 gsc.py, dataforseo.py, audit.py   Search data and site audits
+openseo.py         Installs, starts, stops and health-checks OpenSEO; shares the DataForSEO key
+openseo.patch      The one local change to OpenSEO (embedding by this dashboard only)
 app/q/             Dashboard frontend (vanilla ES modules + CSS)
 data/              Media model catalogue (MIT, from Open Generative AI)
 agency/            Specialist agent briefs
@@ -173,12 +188,13 @@ DESIGN.md          Design system (graphite + teal "Growth Command Center")
 
 - **Local first.** The server binds to `127.0.0.1`. Requests must use a localhost `Host` header, which blocks DNS rebinding. Every write also needs the bearer token in `.agency_token`.
 - **Secrets never enter git.** All credential files, tokens, databases, `workspace/`, `uploads/` and logs are in `.gitignore`.
-- **Computer use can't reach your network.** It refuses loopback, private and link-local addresses, checked after DNS resolution.
+- **Computer use can't reach your network.** The browser and fetch_url refuse loopback, private and link-local addresses, checked after DNS resolution and again on every redirect.
 - **No invented numbers.** Traffic, rankings, leads and spend only appear when a real source is connected. A finished build is never shown as a live website.
 
 ---
 
 ## Credits
 
+- SEO suite: [every-app/open-seo](https://github.com/every-app/open-seo), MIT licence, installed at a pinned commit.
 - Image & Video model catalogue: [anil-matcha/open-generative-ai](https://github.com/anil-matcha/open-generative-ai), MIT licence. The full licence is in `data/media_models.LICENSE`.
 - Built with the Anthropic and OpenAI Python SDKs and Playwright.

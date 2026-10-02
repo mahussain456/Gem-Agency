@@ -6,7 +6,7 @@ import {
   approvalStats, daysUntil, modal, apiPost, closeDrawer, drawer, ago,
 } from "/app/q/js/core.js";
 import { openPalette } from "/app/q/js/palette.js";
-import { ROUTES, monitorTeardown, computerTeardown, mediaTeardown } from "/app/q/js/routes.js";
+import { ROUTES, monitorTeardown, computerTeardown, mediaTeardown, openseoTeardown } from "/app/q/js/routes.js";
 import { recoveryMessage } from '/app/q/js/workflow.js';
 import { NAV, TITLES } from "/app/q/js/nav.js";
 import "/app/q/js/prefs.js";
@@ -62,6 +62,7 @@ async function renderRoute({ quiet = false } = {}) {
   if (currentKey === "monitor" && key !== "monitor") monitorTeardown();
   if (currentKey === "computer") computerTeardown();     // stop polling the old session
   if (currentKey === "media") mediaTeardown();
+  if (currentKey === "seo") openseoTeardown();
   // Dismiss anything floating above the workspace. A modal or drawer left over
   // from the previous route would sit on top of the new page still bound to the
   // old record, and submitting it would write against the wrong context.
@@ -161,7 +162,7 @@ export function attentionItems() {
       go: d.kind === "project" ? `project/${d.id}` : "projects",
     });
   });
-  const NAMES = { gsc: "Google Search Console", ga4: "Google Analytics 4", ahrefs: "Ahrefs",
+  const NAMES = { gsc: "Google Search Console", ga4: "Google Analytics 4", openseo: "OpenSEO",
                   stripe: "Stripe", hermes_gateway: "Hermes gateway" };
   const brain = (ov.integrations || {}).brain;
   if (brain && brain.state === "error") out.push({ sev: "hi", ic: "ai",

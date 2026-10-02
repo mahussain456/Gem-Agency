@@ -69,8 +69,8 @@ body{background:var(--bg);font-size:14px}body::before,body::after,.app::before,.
 .cu-wait{color:var(--tx-3);font-size:13px}
 .cu-scan{position:absolute;left:0;right:0;height:2px;top:0;opacity:0;pointer-events:none;
   background:linear-gradient(90deg,transparent,var(--ac),transparent)}
-.cu-frame.live{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 45%,transparent)}
-html:not([data-motion="off"]) .cu-frame.live .cu-scan{opacity:.55;animation:cu-scan 2.4s linear infinite}
+.cu-frame.is-live{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 45%,transparent)}
+html:not([data-motion="off"]) .cu-frame.is-live .cu-scan{opacity:.55;animation:cu-scan 2.4s linear infinite}
 @keyframes cu-scan{from{transform:translateY(0)}to{transform:translateY(calc(var(--h,500px)))}}
 .cu-steps{list-style:none;margin:0;display:flex;flex-direction:column;gap:2px;max-height:62vh;overflow:auto}
 .cu-step{display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5}
@@ -148,3 +148,69 @@ html:not([data-motion="off"]) .md-card.busy .md-preview{animation:sh 1.6s linear
 .decision-card.sev-md h3::before{background:var(--warn)}
 /* websites table: addresses and times never break mid-word */
 .cell-host{max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- computer use 2.0: brains, structure results, safety checks ---------- */
+.cu-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:7px;vertical-align:1px;background:var(--idle)}
+.cu-dot.ok{background:var(--ok)}
+.cu-dot.bad{background:var(--crit)}
+.fld label .opt{font-weight:400;color:var(--tx-3)}
+.cu-safety{margin:0;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--warn-w)}
+.cu-safety-h{display:flex;gap:8px;align-items:center;color:var(--tx);font-size:13.5px}
+.cu-safety-h svg{width:16px;height:16px;stroke:var(--warn);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.cu-safety ul{margin:8px 0 6px 24px;padding:0;font-size:13px;color:var(--tx)}
+.cu-safety p{margin:0 0 10px 24px}
+.cu-safety-a{display:flex;gap:8px;flex-wrap:wrap;margin-left:24px}
+.cu-step.k-safety .cu-ic{background:var(--warn-w)}
+.cu-step.k-safety .cu-ic svg{stroke:var(--warn)}
+.cu-out{margin:6px 0 2px;padding:8px 10px;max-height:180px;overflow:auto;border-radius:6px;background:var(--bg);
+  border:1px solid var(--line);font:400 11px/1.55 var(--mono);color:var(--tx-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.cu-report-body p,.cu-step .cu-t p{margin:0 0 6px}
+.cu-report-body ul,.cu-step .cu-t ul{margin:0 0 6px 18px;padding:0}
+.cu-report-body li,.cu-step .cu-t li{margin:2px 0}
+.cu-report-body b,.cu-step .cu-t b{color:var(--tx);font-weight:600}
+
+.cu-free{margin-left:5px;padding:1px 5px;border-radius:4px;font:600 9.5px/1.4 var(--mono);letter-spacing:.03em;
+  color:var(--ok);background:var(--ok-w);text-transform:uppercase}
+.cu-step.k-read_page .cu-ic,.cu-step.k-fetch_url .cu-ic{background:var(--blue-w)}
+.cu-step.k-read_page .cu-ic svg,.cu-step.k-fetch_url .cu-ic svg{stroke:var(--blue)}
+.cu-step.k-click_element .cu-ic,.cu-step.k-type_into .cu-ic,.cu-step.k-go_back .cu-ic{background:var(--ac-w)}
+.cu-step.k-click_element .cu-ic svg,.cu-step.k-type_into .cu-ic svg,.cu-step.k-go_back .cu-ic svg{stroke:var(--ac)}
+.cu-more{margin-top:4px}
+.cu-more summary{cursor:pointer;font-size:11.5px;color:var(--ac);list-style:none;width:max-content}
+.cu-more summary::-webkit-details-marker{display:none}
+.cu-more summary::before{content:"▸";display:inline-block;margin-right:5px;transition:transform .15s}
+.cu-more[open] summary::before{transform:rotate(90deg)}
+.cu-report-body .cu-h,.cu-step .cu-t .cu-h{margin:10px 0 4px;font-weight:600;color:var(--tx)}
+.cu-report-body .cu-h:first-child,.cu-step .cu-t .cu-h:first-child{margin-top:0}
+.cu-report-body code,.cu-step .cu-t code{font:500 .92em var(--mono);padding:1px 4px;border-radius:4px;background:var(--raised);color:var(--tx)}
+#cuForm .seg-ctl{flex-wrap:wrap;max-width:100%}
+#cuForm .seg-ctl button{display:inline-flex;align-items:center;white-space:nowrap}
+@media(max-width:480px){#cuForm .seg-ctl button{padding:7px 10px}}
+
+/* ---------- OpenSEO: the embedded SEO suite ---------- */
+.os-page .phead{align-items:flex-start}
+.os-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.os-frame{overflow:hidden;padding:0}
+.os-frame iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:560px;border:0;background:var(--bg)}
+.os-note{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px;padding:13px 15px;border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);
+  border-radius:var(--r-sm);background:var(--warn-w);font-size:13px;color:var(--tx-2)}
+.os-note>svg{width:16px;height:16px;flex-shrink:0;margin-top:2px;stroke:var(--warn);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.os-note b{color:var(--tx)}
+.os-note p{margin:3px 0 0;line-height:1.5}
+.os-note .btn{margin-left:auto;flex-shrink:0}
+.os-empty{text-align:center;padding:36px 20px;max-width:620px;margin:0 auto}
+.os-empty h2{margin:12px 0 6px}
+.os-empty p{color:var(--tx-2);line-height:1.6;margin:0 0 16px}
+.os-empty-ic{width:44px;height:44px;margin:0 auto;border-radius:12px;display:grid;place-items:center;background:var(--ac-w)}
+.os-empty-ic svg{width:22px;height:22px;stroke:var(--ac);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.os-steps{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
+.os-steps li{display:flex;gap:11px;align-items:flex-start;color:var(--tx-3);font-size:13px}
+.os-steps li b{display:block;color:var(--tx-2);font-weight:600}
+.os-steps li.now b,.os-steps li.done b{color:var(--tx)}
+.os-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;border:1.5px solid var(--line-2)}
+.os-steps li.done .os-dot{background:var(--ok-w);border-color:var(--ok)}
+.os-steps li.done .os-dot svg{width:11px;height:11px;stroke:var(--ok);fill:none;stroke-width:2.4}
+.os-steps li.now .os-dot{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac-w)}
+html:not([data-motion="off"]) .os-steps li.now .os-dot{animation:os-pulse 1.4s ease-in-out infinite}
+@keyframes os-pulse{50%{box-shadow:0 0 0 6px transparent}}
+@media(max-width:767px){.os-note{flex-wrap:wrap}.os-note .btn{margin-left:28px}.os-frame iframe{height:calc(100vh - 170px)}}

@@ -1235,6 +1235,27 @@ def _dfs_integration_state() -> dict[str, Any]:
     return {"state": "configured" if creds.get("login") else "not_connected"}
 
 
+_openseo_state_cache: dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def _openseo_integration_state() -> dict[str, Any]:
+    """Installed / running, from a local health probe, cached briefly for the overview."""
+    c = _openseo_state_cache
+    if c["value"] is not None and time.time() - c["at"] < 10:
+        return c["value"]
+    try:
+        import openseo
+        st = openseo.status()
+        state = ("running" if st["running"] else "error" if st["phase"] == "failed"
+                 else "configured" if st["installed"] else "not_connected")
+        value = {"state": state, "url": st["url"] if st["running"] else "", "dataforseo": st["dataforseo"],
+                 **({"error": st["error"]} if st["error"] else {})}
+    except Exception as exc:
+        value = {"state": "error", "error": str(exc)[:300]}
+    c.update(at=time.time(), value=value)
+    return value
+
+
 _gsc_state_cache: dict[str, Any] = {"at": 0.0, "value": None}
 
 
@@ -1304,7 +1325,7 @@ def overview() -> dict[str, Any]:
             "ollama": _model_integration_state("ollama", pstatus),
             "jev": _model_integration_state("jev"),
             "ga4": {"state": "not_connected"},
-            "ahrefs": {"state": "not_connected"},
+            "openseo": _openseo_integration_state(),
             "stripe": {"state": "not_connected"},
         },
     }
@@ -2005,6 +2026,9 @@ def handle_get(handler, parsed) -> bool:
                 handler.send_json({"ok": True, "session": _c.get(q.get("id", ""), int(q.get("since", "0")))})
             except KeyError as exc:
                 handler.send_json({"ok": False, "error": str(exc).strip("'")}, 404)
+        elif path == "/api/agency/openseo/status":
+            import openseo as _o
+            handler.send_json({"ok": True, "openseo": _o.status()})
         elif path == "/api/agency/dataforseo/status":
             import dataforseo as _d
             handler.send_json({"ok": True, **_d.status()})
@@ -2055,6 +2079,9 @@ POST_ROUTES = {
     "/api/agency/pipeline/start": lambda q, d: _pipeline_start(d),
     "/api/agency/pipeline/resume": lambda q, d: _pipeline_call("resume_run", q.get("id", "")),
     "/api/agency/pipeline/cancel": lambda q, d: _pipeline_call("cancel_run", q.get("id", "")),
+    "/api/agency/openseo/install": lambda q, d: {"openseo": __import__("openseo").install()},
+    "/api/agency/openseo/start": lambda q, d: {"openseo": __import__("openseo").start()},
+    "/api/agency/openseo/stop": lambda q, d: {"openseo": __import__("openseo").stop()},
     "/api/agency/dataforseo/setup": lambda q, d: _dfs_setup(d),
     "/api/agency/dataforseo/disconnect": lambda q, d: _dfs_disconnect(),
     "/api/agency/dataforseo/enrich": lambda q, d: _dfs_enrich(d),
@@ -2080,8 +2107,11 @@ POST_ROUTES = {
         str(d.get("prompt", "")), str(d.get("kind", ""))),
     "/api/agency/media/seo": lambda q, d: {"seo": __import__("media").seo_metadata(str(d.get("id", "")))},
     "/api/agency/computer/start": lambda q, d: {"session": __import__("computer").start(
-        str(d.get("task", "")), str(d.get("url", "")), d.get("max_steps") or 25, bool(d.get("visible")))},
+        str(d.get("task", "")), str(d.get("url", "")), d.get("max_steps") or 25, bool(d.get("visible")),
+        brain=str(d.get("brain") or "auto"))},
     "/api/agency/computer/stop": lambda q, d: {"session": __import__("computer").stop(str(d.get("id", "")))},
+    "/api/agency/computer/decide": lambda q, d: {"session": __import__("computer").decide(
+        str(d.get("id", "")), d.get("approve") is True)},
     "/api/agency/models/ollama": lambda q, d: _ollama_setup(d),
     "/api/agency/browser/capture": lambda q, d: _browser_capture(d),
     "/api/agency/gsc/setup": lambda q, d: _gsc_setup(d),
@@ -2301,13 +2331,22 @@ def _send_screenshot(handler, raw_path: str) -> None:
 def _dfs_setup(d: dict) -> dict[str, Any]:
     import dataforseo
     dataforseo.save_credentials(str(d.get("login", "")), str(d.get("password", "")))
+    _openseo_follow_key()
     return {"configured": True, **dataforseo.status()}
 
 
 def _dfs_disconnect() -> dict[str, Any]:
     import dataforseo
     dataforseo.disconnect()
+    _openseo_follow_key()
     return {"disconnected": True}
+
+
+def _openseo_follow_key() -> None:
+    """OpenSEO reads the same DataForSEO key: a running one restarts to pick up the change."""
+    import openseo
+    _openseo_state_cache["value"] = None
+    threading.Thread(target=openseo.restart_if_running, name="openseo-rekey", daemon=True).start()
 
 
 def _dfs_enrich(d: dict) -> dict[str, Any]:

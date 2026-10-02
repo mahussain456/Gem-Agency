@@ -128,7 +128,7 @@ Produce a competitive landscape in markdown:
 4. **Table stakes** — what every competitor has; the site fails without it.
 5. **The wedge** — the angle currently underserved.
 
-Do not state traffic, domain authority, or ranking numbers — you cannot see them. Where such a number would matter, write "verify in Search Console/Ahrefs".
+Do not state traffic, domain authority, or ranking numbers — you cannot see them. Where such a number would matter, write "verify in Search Console/OpenSEO".
 
 {HOUSE_RULES}""",
         },
