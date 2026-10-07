@@ -17,10 +17,11 @@ export const NAV = [
       say: ["overview", "home", "dashboard", "command deck", "main page", "start page"] },
     { h: "projects", ic: "proj", t: "Websites", s: "Everything being built", key: "w",
       say: ["websites", "website list", "projects", "sites", "my sites", "all sites"] },
-    { h: "growth", ic: "chart", t: "Growth", s: "Search performance and SEO", key: "r",
+    { h: "growth", ic: "chart", t: "Growth", s: "Your search results, fixes and link outreach", key: "r",
       say: ["growth", "search performance", "traffic", "analytics"] },
-    { h: "seo", ic: "seo", t: "OpenSEO", s: "Keywords, rankings, backlinks, audits, AI visibility", key: "s",
+    { h: "seo", ic: "seo", t: "OpenSEO", s: "Research: keywords, competitors, backlinks, rank tracking", key: "s",
       say: ["openseo", "open seo", "seo", "seo suite", "seo tools", "keyword research", "rank tracking",
+            "keywords", "keyword list", "search terms", "tracked keywords",
             "rank tracker", "rankings", "backlink checker", "domain overview", "ai visibility"] },
     { h: "clients", ic: "users", t: "Clients", s: "Who is paying, and their reports", key: "c",
       say: ["clients", "customers", "accounts", "client list"] },
@@ -52,10 +53,8 @@ export const NAV = [
 export const EXTRA = [
   { h: "optimize", ic: "seo", t: "Website audits", s: "SEO, AEO and GEO audits", key: "u",
     say: ["website audits", "audits", "audit page", "optimize", "optimisation", "optimization", "aeo", "geo"] },
-  { h: "keywords", ic: "key", t: "Keywords", s: "Tracked search terms", key: "y",
-    say: ["keywords", "keyword list", "search terms", "tracked keywords"] },
-  { h: "backlinks", ic: "link", t: "Backlinks", s: "Link prospects and outreach", key: "l",
-    say: ["backlinks", "links", "link building", "outreach", "link prospects"] },
+  { h: "backlinks", ic: "link", t: "Link outreach", s: "Sites to earn links from, and where each stands", key: "l",
+    say: ["link outreach", "backlinks", "links", "link building", "outreach", "link prospects"] },
 ];
 
 export const PAGES = NAV.flatMap(g => g.items).concat(EXTRA);

@@ -4,92 +4,17 @@
 // ============================================================
 import {
   store, apiGet, apiPost, esc, icon, ago, money, titleCase, tag, emptyState,
-  errBox, skeleton, bindGo, toast, refresh, modal, keywordStats, shapeProject,
+  errBox, skeleton, bindGo, toast, refresh, modal, shapeProject,
 } from "/app/q/js/core.js";
 
 const head = (h1, p, acts = "") => `<div class="phead"><div><h1>${h1}</h1><p>${p}</p></div>
   <div class="acts">${acts}</div></div>`;
 
-/* ---------------- KEYWORDS ---------------- */
-export async function keywords(el) {
-  el.innerHTML = `<div class="page">${head("Keywords",
-    "Tracked search terms. Positions are only shown when a rank source supplies them — they are never estimated.",
-    `<button class="btn pri" id="addK">${icon("plus")} Track a keyword</button>`)}<div id="kBody">${skeleton(4)}</div></div>`;
-  const body = document.getElementById("kBody");
-  let list = [];
-  try { list = (await apiGet("/api/agency/keywords")).keywords || []; }
-  catch (e) { body.innerHTML = errBox(e); return; }
-  const k = keywordStats(list);
-  const clients = (store.overview && store.overview.clients) || [];
-  const gsc = store.overview && store.overview.integrations && store.overview.integrations.gsc;
-
-  body.innerHTML = `
-    ${gsc && gsc.state !== "connected" ? `<div class="errbox" style="margin-bottom:var(--gap)">
-      <b>No rank source connected</b>Search Console is ${esc(gsc.state)}, so positions and impressions stay blank
-      rather than being filled with estimates. <button class="linkbtn" data-go="integrations">Fix the connection</button></div>` : ""}
-    <div class="kpis">
-      ${[["Tracked", k.tracked], ["With a position", k.ranked], ["Top 3", k.top3], ["Top 10", k.top10],
-         ["Improved", k.improved], ["Declined", k.declined]].map(([n, v]) =>
-        `<div class="kpi" style="cursor:default"><div class="k">${icon("key")}${n}</div><div class="v">${v}</div></div>`).join("")}
-    </div>
-    ${list.length ? `<div class="tblwrap"><table class="tbl"><thead><tr>
-      <th>Keyword</th><th>Intent</th><th class="num">Volume</th><th class="num">Difficulty</th>
-      <th class="num">Position</th><th class="num">Change</th><th>URL</th><th>Source</th><th></th>
-    </tr></thead><tbody>${list.map(w => {
-      const d = (w.prev_position && w.position) ? w.prev_position - w.position : null;
-      return `<tr><td><b style="font-weight:600">${esc(w.keyword)}</b></td>
-        <td style="color:var(--tx-2)">${esc(w.intent || "—")}</td>
-        <td class="num">${w.volume || "—"}</td><td class="num">${w.difficulty || "—"}</td>
-        <td class="num">${w.position || "—"}</td>
-        <td class="num">${d == null ? "—" : `<span class="trend ${d > 0 ? "up" : d < 0 ? "down" : "flat"}">${
-          icon("trend")}${d > 0 ? "+" : ""}${d}</span>`}</td>
-        <td class="mono" style="font-size:12px;color:var(--tx-2)">${esc(String(w.url || "—").replace(/^https?:\/\//, ""))}</td>
-        <td>${tag(w.provenance || w.source || "manual", w.provenance === "verified" ? "t-ok" : "t-idle")}</td>
-        <td style="text-align:right"><button class="btn sm" data-del="${esc(w.id)}">${icon("x")}</button></td></tr>`;
-    }).join("")}</tbody></table></div>`
-    : `<section class="panel"><div class="panel-b">${emptyState({ ic: "key",
-        title: "No keywords tracked yet",
-        body: "Add them by hand, or run an SEO campaign — its keyword stage writes a real intent map you can promote into this list." })}</div></section>`}`;
-
-  document.getElementById("addK").addEventListener("click", () => modal({
-    title: "Track a keyword",
-    // provenance is required by keyword_create — every row must say where its
-    // numbers came from, which is what keeps this table honest.
-    note: "Provenance is required. Use “estimated” for a guess, “imported” for data pasted from a tool, "
-        + "and “verified” only for figures confirmed by a connected rank source.",
-    fields: [
-      { name: "keyword", label: "Keyword", required: true },
-      { name: "provenance", label: "Where did this come from?", type: "select", value: "estimated",
-        options: [
-          { value: "estimated", label: "Estimated — my own guess" },
-          { value: "imported", label: "Imported — pasted from a tool" },
-          { value: "verified", label: "Verified — confirmed by a rank source" },
-        ] },
-      { name: "intent", label: "Intent", type: "select", value: "", options:
-        ["", "informational", "commercial", "transactional", "navigational", "local"]
-          .map(v => ({ value: v, label: v ? titleCase(v) : "— not set —" })) },
-      { name: "volume", label: "Monthly volume", type: "number", placeholder: "optional" },
-      { name: "position", label: "Current position", type: "number", placeholder: "optional" },
-      { name: "url", label: "Target URL" },
-      { name: "source", label: "Source", placeholder: "e.g. GSC export, OpenSEO, manual guess" },
-      { name: "client_id", label: "Client", type: "select", options:
-        [{ value: "", label: "— none —" }].concat(clients.map(c => ({ value: c.id, label: c.name }))) },
-    ],
-    submitLabel: "Track it",
-    onSubmit: async v => { await apiPost("/api/agency/keywords", v); toast("Keyword tracked."); keywords(el); },
-  }));
-  body.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => {
-    if (!confirm("Stop tracking this keyword?")) return;
-    await apiPost(`/api/agency/keywords/delete?id=${encodeURIComponent(b.dataset.del)}`);
-    keywords(el);
-  }));
-  bindGo(el);
-}
-
-/* ---------------- BACKLINKS ---------------- */
+/* ---------------- LINK OUTREACH ---------------- */
 export async function backlinks(el) {
-  el.innerHTML = `<div class="page">${head("Backlinks",
-    "Prospects the outreach agent found, and where each one stands.")}<div id="bBody">${skeleton(4)}</div></div>`;
+  el.innerHTML = `<div class="page">${head("Link outreach",
+    "Sites your SEO campaigns found worth earning a link from, and where each one stands. To analyse the links a site already has, use OpenSEO.",
+    `<button class="btn" data-go="seo">${icon("seo")} Backlink analysis in OpenSEO</button>`)}<div id="bBody">${skeleton(4)}</div></div>`;
   const body = document.getElementById("bBody");
   let list = [];
   try { list = (await apiGet("/api/agency/backlinks")).prospects || []; }
@@ -101,9 +26,11 @@ export async function backlinks(el) {
       body: "The backlink stage of an SEO campaign finds and verifies these for real." })}</div></section>`;
     bindGo(el); return;
   }
-  const STAGES = ["new", "qualified", "approved", "contacted", "won", "rejected"];
-  const CLS = { new: "t-idle", qualified: "t-blue", approved: "t-cyan", contacted: "t-warn", won: "t-ok", rejected: "t-crit" };
+  // "identified" is what the campaign's backlink stage writes; it was missing here, hiding those prospects
+  const STAGES = ["new", "identified", "qualified", "approved", "contacted", "won", "rejected"];
+  const CLS = { new: "t-idle", identified: "t-idle", qualified: "t-blue", approved: "t-cyan", contacted: "t-warn", won: "t-ok", rejected: "t-crit" };
   const cols = STAGES.map(s => ({ s, items: list.filter(p => (p.status || "new") === s) }))
+    .concat([{ s: "other", items: list.filter(p => !STAGES.includes(p.status || "new")) }])   // never hide a prospect
     .filter(c => c.items.length);
 
   body.innerHTML = `<div class="grid">${cols.map(c => `<section class="panel s3">
@@ -197,7 +124,7 @@ export async function integrations(el) {
     claude: { n: "Claude", d: "Anthropic API", ic: "ai" },
     chatgpt: { n: "ChatGPT", d: "OpenAI API", ic: "ai" },
     ollama: { n: "Ollama", d: "Local models on this computer", ic: "bot" },
-    jev: { n: "Jev", d: "Typed decisions", ic: "bot" },
+    jev: { n: "Typed decisions", d: "Laya on this computer (free); Jev cloud optional", ic: "bot" },
   };
   const CLS = { connected: ["Connected", "t-ok"], running: ["Connected", "t-ok"], configured: ["Connected", "t-ok"],
                 error: ["Needs attention", "t-crit"], not_connected: ["Not connected", "t-idle"] };
@@ -363,29 +290,47 @@ async function drawModels(slot) {
   };
 
   const jevOn = (st.jev || {}).connected;
+  const cloudOn = (st.jev || {}).cloud;
+  const laya = (st.jev || {}).laya || {};
   slot.innerHTML = `<div class="grid">
     ${brainPanel(p)}
     ${card("claude", p.claude || {})}
     ${card("chatgpt", p.chatgpt || {})}
     ${ollamaCard(p.ollama || {})}
     <section class="panel s6"><div class="panel-h">
-      <div style="min-width:0"><h2>Jev (TypeSafe AI)</h2>
-        <div class="sub">Typed decisions — yes/no, choice and score, each with a confidence</div></div>
-      <span class="r">${tag(jevOn ? "Connected" : "Not connected", jevOn ? "t-ok" : "t-idle")}</span></div>
+      <div style="min-width:0"><h2>Typed decisions</h2>
+        <div class="sub">Yes/no, pick one and score, each with a calibrated confidence</div></div>
+      <span class="r">${tag(jevOn ? "Ready" : "Not set up", jevOn ? "t-ok" : "t-idle")}</span></div>
       <div class="panel-b">
-        <div class="s" style="margin-bottom:9px">Used where the pipeline needs a decision rather than prose —
-          for example triaging whether minor build defects justify regenerating a page. Far cheaper and faster
-          than spending a full model call on a classification.</div>
-        ${jevOn ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn sm" data-jevtest>Send a test decision</button>
-            <button class="btn sm" data-jevoff>Disconnect</button></div>
-          <div class="s" id="jevOut" style="margin-top:9px"></div>`
-        : `<form id="jevForm" style="display:grid;gap:7px">
-            <input name="api_key" type="password" placeholder="TypeSafe API key"
+        <div class="s" style="margin-bottom:11px">Used where the pipeline needs a decision rather than prose,
+          for example whether minor build defects justify regenerating a page. Laya answers free on this
+          computer; Jev (TypeSafe) is an optional cloud engine used only if Laya cannot answer.</div>
+        <div class="dec-engine">
+          <div class="dec-h">${icon("bot")}<b>Laya</b><span class="cu-free">free</span>
+            <span class="r">${tag(laya.running ? "Running" : laya.phase === "installing" ? "Installing" : laya.phase === "starting" ? "Starting"
+              : laya.phase === "failed" ? "Failed" : laya.installed ? "Installed" : "Not installed",
+              laya.running ? "t-ok" : laya.phase === "failed" ? "t-crit" : laya.installed ? "t-blue" : "t-idle")}</span></div>
+          <div class="s">${laya.installed
+            ? `Open source, runs on this computer (${esc(laya.device || "CPU")}). Models downloaded: ${esc((laya.models_downloaded || []).join(", ") || "none yet")}.`
+            : "Open source (Apache-2.0). Installs about 700 MB of packages and downloads a model of about 800 MB on its first decision."}</div>
+          ${laya.error ? `<div class="errbox" style="margin:8px 0 0"><b>Laya</b>${esc(laya.error)}</div>` : ""}
+          <div class="dec-a">${!laya.installed
+            ? `<button class="btn pri sm" data-laya="install" ${laya.phase === "installing" ? "disabled" : ""}>${icon("plus")} Install Laya</button>`
+            : laya.running ? `<button class="btn sm" data-laya="stop">${icon("pause")} Stop</button>`
+            : `<button class="btn sm" data-laya="start">${icon("play")} Start</button>`}</div>
+        </div>
+        <div class="dec-engine">
+          <div class="dec-h">${icon("plug")}<b>Jev (TypeSafe)</b><span class="r">${tag(cloudOn ? "Connected" : "Optional", cloudOn ? "t-ok" : "t-idle")}</span></div>
+          ${cloudOn ? `<div class="dec-a"><button class="btn sm" data-jevoff>Disconnect</button></div>`
+          : `<form id="jevForm" style="display:grid;gap:7px;margin-top:6px">
+            <input name="api_key" type="password" placeholder="TypeSafe API key (paid, optional)"
               autocomplete="off" spellcheck="false"
               style="padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);font:13.5px inherit">
             <div class="errbox" data-err hidden style="margin:0"></div>
-            <button class="btn pri sm" type="submit">Connect</button></form>`}
+            <button class="btn sm" type="submit">Connect Jev</button></form>`}
+        </div>
+        ${jevOn ? `<div style="margin-top:11px"><button class="btn sm" data-jevtest>${icon("bolt")} Send a test decision</button>
+          <div class="s" id="jevOut" style="margin-top:8px"></div></div>` : ""}
       </div></section>
   </div>`;
   wireBrain(slot, p);
@@ -476,14 +421,33 @@ async function drawModels(slot) {
   const jt = slot.querySelector("[data-jevtest]");
   if (jt) jt.addEventListener("click", async () => {
     const out = slot.querySelector("#jevOut");
-    jt.disabled = true; out.textContent = "Deciding…";
+    jt.disabled = true; out.textContent = "Deciding… the first decision loads the model, which can take a minute.";
     try {
       const r = await apiGet("/api/agency/jev/status");
-      out.innerHTML = r.ok ? `Answered in ${r.latency_ms} ms on <b>${esc(r.model)}</b>.`
+      out.innerHTML = r.ok ? `${esc(r.sample)} <b>${esc(r.engine_label)}</b> answered in ${r.latency_ms} ms (${esc(r.model)}).`
                            : `<span style="color:var(--crit)">${esc(r.error || "failed")}</span>`;
     } catch (e) { out.innerHTML = `<span style="color:var(--crit)">${esc(String(e.message || e))}</span>`; }
     jt.disabled = false;
   });
+
+  slot.querySelectorAll("[data-laya]").forEach(b => b.addEventListener("click", async () => {
+    const act = b.dataset.laya;
+    b.disabled = true;
+    try {
+      await apiPost(`/api/agency/laya/${act}`, {});
+      toast(act === "install" ? "Installing Laya. This takes a few minutes; this page updates when it is done."
+        : act === "start" ? "Starting Laya." : "Laya stopped.");
+      // installs and starts carry on in the background: refresh until they settle
+      const until = Date.now() + (act === "install" ? 30 * 60000 : 120000);
+      const tick = async () => {
+        if (!slot.isConnected) return;
+        const st = (await apiGet("/api/agency/laya/status")).laya;
+        if (["installing", "starting"].includes(st.phase) && Date.now() < until) return setTimeout(tick, 3000);
+        drawModels(slot);
+      };
+      setTimeout(tick, 1500);
+    } catch (e) { toast(String(e.message || e), true); b.disabled = false; }
+  }));
 
   const jo = slot.querySelector("[data-jevoff]");
   if (jo) jo.addEventListener("click", async () => {

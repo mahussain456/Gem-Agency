@@ -144,8 +144,12 @@ class JevTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self._orig = jev.CREDS_PATH
         jev.CREDS_PATH = Path(self.tmp.name) / "jev.json"
+        import laya_engine                      # the cloud path alone: Laya counts as not installed
+        self._laya = mock.patch.object(laya_engine, "installed", return_value=False)
+        self._laya.start()
 
     def tearDown(self):
+        self._laya.stop()
         jev.CREDS_PATH = self._orig
         self.tmp.cleanup()
 
@@ -154,12 +158,12 @@ class JevTests(unittest.TestCase):
             st = jev.status()
             self.assertFalse(st["ok"])
             self.assertFalse(st["connected"])
-            self.assertIn("Not connected", st["error"])
+            self.assertIn("No decision engine", st["error"])
 
     def test_question_builders_match_the_api_shape(self):
         n = jev.noul("Is it broken?", {"yes": "a", "no": "b"})
         self.assertEqual(n["type"], "noul")
-        self.assertEqual(n["criteria"], {"yes": "a", "no": "b"})
+        self.assertEqual(n["criteria"], {"true": "a", "false": "b"})   # the protocol's keys
         c = jev.choice("Which?", {"a": "first", "b": "second"})
         self.assertEqual(c["type"], "choice")
         s = jev.score("How bad?", ["fine", "poor", "awful"])
@@ -249,7 +253,7 @@ class RepairTriageTests(unittest.TestCase):
             skip, why = playbooks._repair_needed(
                 {"visual_qa": {"defects": [{"severity": "low", "title": "No og:title"}]}})
         self.assertFalse(skip)
-        self.assertIn("not connected", why)
+        self.assertIn("no decision engine", why)
 
     def test_jev_can_skip_trivial_defects(self):
         with mock.patch.object(jev, "connected", return_value=True), \

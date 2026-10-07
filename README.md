@@ -21,6 +21,7 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 | **Jarvis** | Voice assistant. Open conversation, like ChatGPT voice. Hands-free mode, interrupt it by speaking, sentence-by-sentence speech. It can navigate and trigger actions from a checked list. |
 | **Computer use 2.0** | An AI operates an isolated Chrome on this PC. It works two ways in one task: through the page's structure (read the page, click or type by element number, fetch a URL's raw response for robots.txt, sitemaps, headers and redirects) and through the screen for anything visual. Three brains: Claude and ChatGPT (paid API calls; they read and see), and **Local** on Ollama (free and private; it reads only). Auto tries Claude, then ChatGPT, then Local, handing over only before anything is clicked. ChatGPT's safety checks wait for your approval; password and card fields refuse input. Sessions are saved under `workspace/computer`. |
 | **Image & Video** | 402 image and video models from [Open Generative AI](https://github.com/anil-matcha/open-generative-ai), run through the Muapi API. Supports text-to-X, image-to-X and uploads. |
+| **Typed decisions (Laya)** | [Laya](https://github.com/NandhaKishorM/laya) answers yes/no, pick-one and score questions with calibrated probabilities, free, on this PC (about 0.2 s per decision on CPU once loaded). It speaks the same protocol as TypeSafe's Jev, which stays available as an optional paid cloud engine. The pipeline uses it to triage minor build defects. Install it from Models, Typed decisions. |
 | **Models** | Connect Claude, ChatGPT and Ollama. See each provider's health and the order the brain chain will try them. |
 
 ### The brain chain
@@ -168,6 +169,7 @@ runner.py          Persistent pipeline runner
 playbooks.py       Pipeline definitions (website build, SEO campaign)
 providers.py       Brain chain: Claude → ChatGPT → Ollama, health tracking, streaming
 jarvis.py          Conversational voice endpoint and action vocabulary
+laya_engine.py     Installs, starts and stops Laya (local typed decisions); jev.py routes decisions to it first
 computer.py        Computer use 2.0: structure + screen tools; Claude, ChatGPT or Local (Ollama)
 media.py           Muapi client for Image & Video
 browser.py         Headless screenshots
@@ -195,6 +197,7 @@ DESIGN.md          Design system (graphite + teal "Growth Command Center")
 
 ## Credits
 
+- Typed decisions: [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya), Apache-2.0, release 0.4.0, models from Hugging Face (convaiinnovations).
 - SEO suite: [every-app/open-seo](https://github.com/every-app/open-seo), MIT licence, installed at a pinned commit.
 - Image & Video model catalogue: [anil-matcha/open-generative-ai](https://github.com/anil-matcha/open-generative-ai), MIT licence. The full licence is in `data/media_models.LICENSE`.
 - Built with the Anthropic and OpenAI Python SDKs and Playwright.

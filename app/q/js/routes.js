@@ -14,7 +14,7 @@ import openseo, { openseoTeardown } from "/app/q/js/pages/openseo.js";
 import approvals from "/app/q/js/pages/approvals.js";
 import ai from "/app/q/js/pages/ai.js";
 import projects, { projectPage } from "/app/q/js/pages/projects.js";
-import { keywords, backlinks, clients, integrations, models,
+import { backlinks, clients, integrations, models,
 } from "/app/q/js/pages/misc.js";
 
 function missing(el) {
@@ -41,7 +41,7 @@ export const ROUTES = {
   project: projectPage,
   builder,
   optimize,
-  keywords,
+  keywords: () => location.replace("#seo"),   // keyword tracking moved to OpenSEO; old links land there
   backlinks,
   agency: agentsPage,
   agents: agentsPage,

@@ -41,7 +41,7 @@ function paintNavState() {
   navEl.querySelectorAll("a").forEach(a => {
     const h = a.dataset.h;
     a.classList.toggle("on", h === key || (key === "agents" && h === "agency")
-      || (["optimize", "keywords", "backlinks"].includes(key) && h === "growth")
+      || (["optimize", "backlinks"].includes(key) && h === "growth")
       || (key === "project" && h === "projects") || (key === "client" && h === "clients"));
   });
   const title = TITLES[key] || (!ROUTES[key] ? "Not found" : key ? titleCase(key) : "Overview");

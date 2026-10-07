@@ -39,3 +39,5 @@ docs/ui-previews/
 
 # OpenSEO checkout and build (installed by openseo.py; the patch is tracked)
 openseo/
+# Laya's packages (PyTorch CPU, transformers), installed by laya_engine.py
+laya-pkgs/

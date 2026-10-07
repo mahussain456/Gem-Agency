@@ -17,7 +17,12 @@ Three question types, exactly as the API defines them:
   choice  pick one    -> {"choice": k, "probabilities": {...}, "confidence": c}
   score   rate a scale-> {"score": 1.5, "legend": {...}, "probabilities": [...], "confidence": c}
 
-Nothing is inferred when the model is not connected: callers get a clear
+Two engines speak this protocol. Laya (laya_engine.py) is open source and
+runs on this machine for free; it is used first whenever it is installed.
+Jev is TypeSafe's cloud API, used only with a TypeSafe key and only when Laya
+cannot answer. Every result says which engine answered.
+
+Nothing is inferred when no engine is available: callers get a clear
 "unavailable" and decide for themselves, rather than a fabricated answer.
 
 Stdlib only — the endpoint is a single authenticated POST.
@@ -74,7 +79,7 @@ def _key() -> str:
     return key
 
 
-def connected() -> bool:
+def cloud_connected() -> bool:
     try:
         _key()
         return True
@@ -82,13 +87,39 @@ def connected() -> bool:
         return False
 
 
+LABELS = {"laya": "Laya (local)", "jev": "Jev (TypeSafe)"}
+
+
+def engines() -> list[str]:
+    """The engines that can answer, in the order they are tried: free and local first."""
+    import laya_engine
+    out = ["laya"] if laya_engine.installed() else []
+    if cloud_connected():
+        out.append("jev")
+    return out
+
+
+def connected() -> bool:
+    """Some engine can answer typed decisions."""
+    return bool(engines())
+
+
 # ---------------------------------------------------------------- questions
 
 def noul(instructions: str, criteria: dict[str, str] | None = None) -> dict[str, Any]:
-    """A yes/no question. The answer is the probability of yes."""
+    """A yes/no question. The answer is the probability of yes.
+
+    The protocol keys a noul's criteria 'true'/'false'. Jev silently drops any
+    other key (and Laya refuses it), so the natural 'yes'/'no' are mapped here
+    rather than letting the definitions written for a question go unread.
+    """
     q: dict[str, Any] = {"type": "noul", "instructions": instructions}
     if criteria:
-        q["criteria"] = criteria
+        alias = {"yes": "true", "no": "false", "true": "true", "false": "false"}
+        bad = [k for k in criteria if str(k).lower() not in alias]
+        if bad:
+            raise ValueError(f"a yes/no question takes criteria 'yes'/'no' (or 'true'/'false'), not {bad}")
+        q["criteria"] = {alias[str(k).lower()]: v for k, v in criteria.items()}
     return q
 
 
@@ -125,10 +156,35 @@ def decide(state: Any, questions: dict[str, dict[str, Any]], *,
         state = state[:MAX_STATE_CHARS]
 
     body = json.dumps({"state": state, "model": model, "questions": questions}).encode()
-    req = urllib.request.Request(API_URL, data=body, method="POST", headers={
-        "Authorization": f"Bearer {_key()}",
+    order = engines()
+    if not order:
+        raise JevError("no decision engine: install Laya (free, runs on this computer) "
+                       "or add a TypeSafe API key for Jev")
+    errors = []
+    for engine in order:
+        try:
+            return _call(engine, body, questions, model, timeout)
+        except JevError as exc:
+            errors.append(f"{LABELS[engine]}: {exc}")
+    raise JevError("; ".join(errors))
+
+
+def _call(engine: str, body: bytes, questions: dict[str, dict[str, Any]], model: str,
+          timeout: int) -> dict[str, Any]:
+    if engine == "laya":
+        import laya_engine
+        if not laya_engine.ensure():
+            raise JevError("Laya is installed but could not start; see the Models page")
+        url, auth = laya_engine.URL + "/v1/systemone", laya_engine.token()
+        # local and free: the first decision also loads a checkpoint, which takes a while on CPU
+        timeout = max(timeout, 180)
+    else:
+        url, auth = API_URL, _key()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {auth}",
         "Content-Type": "application/json",
     })
+    name = LABELS[engine]
     started = time.time()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -136,22 +192,25 @@ def decide(state: Any, questions: dict[str, dict[str, Any]], *,
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:300]
         if exc.code == 401:
-            raise JevError("TypeSafe rejected the API key (401)") from None
+            raise JevError(f"{name} rejected the key (401)") from None
         if exc.code == 422:
-            raise JevError(f"Jev rejected the request shape (422): {detail}") from None
-        if exc.code in (429, 529):
-            raise JevError(f"Jev is rate limited ({exc.code}) — retry shortly") from None
-        raise JevError(f"Jev HTTP {exc.code}: {detail}") from None
+            raise JevError(f"{name} rejected the request shape (422): {detail}") from None
+        if exc.code in (429, 503, 529):
+            raise JevError(f"{name} is busy ({exc.code}), retry shortly") from None
+        raise JevError(f"{name} HTTP {exc.code}: {detail}") from None
     except Exception as exc:
-        raise JevError(f"could not reach Jev: {type(exc).__name__}: {exc}") from None
+        raise JevError(f"could not reach {name}: {type(exc).__name__}: {exc}") from None
 
     answers = payload.get("answers") or {}
     missing = [k for k in questions if k not in answers]
     if missing:
-        raise JevError(f"Jev did not answer: {', '.join(missing)}")
+        raise JevError(f"{name} did not answer: {', '.join(missing)}")
+    routed = (payload.get("routing") or {}).get("model")
     return {
         "answers": answers,
-        "model": payload.get("model", model),
+        "engine": engine,
+        "engine_label": name,
+        "model": routed or payload.get("model", model),
         "usage": payload.get("usage") or {},
         "ms": int((time.time() - started) * 1000),
         "provenance": "verified",   # the model actually answered; the value is its own
@@ -193,14 +252,20 @@ def level(answer: dict[str, Any]) -> tuple[float, str]:
 
 
 def status() -> dict[str, Any]:
+    """Send one real test decision through the engines and report who answered."""
     if not connected():
-        return {"ok": False, "connected": False,
-                "error": "Not connected. Add a TypeSafe API key to use Jev for typed decisions "
-                         "(classification, routing, scoring) instead of a full model call."}
+        return {"ok": False, "connected": False, "engines": [],
+                "error": "No decision engine. Install Laya (free, runs on this computer) or add a "
+                         "TypeSafe API key for Jev."}
     try:
-        res = decide("ping", {"ok": noul("Is this text non-empty?")}, timeout=15)
+        res = decide("We were billed twice for March. Refund the duplicate or we cancel.",
+                     {"department": choice("Which department should handle this?",
+                                           {"billing": "invoices, payments, refunds",
+                                            "technical": "bugs, outages, errors",
+                                            "other": "everything else"})}, timeout=15)
     except JevError as exc:
-        return {"ok": False, "connected": True, "error": str(exc)}
-    return {"ok": True, "connected": True, "model": res["model"],
-            "latency_ms": res["ms"],
-            "note": "Typed decisions: yes/no, choice and score, each with a confidence."}
+        return {"ok": False, "connected": True, "engines": engines(), "error": str(exc)}
+    pick, conf = picked(res["answers"]["department"])
+    return {"ok": True, "connected": True, "engines": engines(), "engine": res["engine"],
+            "engine_label": res["engine_label"], "model": res["model"], "latency_ms": res["ms"],
+            "sample": f"A double-billing complaint was routed to {pick} ({conf:.0%} confident)."}

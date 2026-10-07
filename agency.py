@@ -1181,7 +1181,9 @@ def _model_integration_state(name: str, status: dict[str, Any] | None = None) ->
     try:
         if name == "jev":
             import jev
-            return {"state": "configured" if jev.connected() else "not_connected"}
+            engines = jev.engines()
+            return {"state": "configured" if engines else "not_connected",
+                    "engines": [jev.LABELS[e] for e in engines]}
         import providers
         st = (status if status is not None else providers.status()).get(name) or {}
         if st.get("connected"):
@@ -2034,6 +2036,9 @@ def handle_get(handler, parsed) -> bool:
             handler.send_json({"ok": True, **_d.status()})
         elif path == "/api/agency/models/status":
             handler.send_json({"ok": True, **_models_status()})
+        elif path == "/api/agency/laya/status":
+            import laya_engine as _l
+            handler.send_json({"ok": True, "laya": _l.status()})
         elif path == "/api/agency/jev/status":
             import jev as _j
             handler.send_json({"ok": True, **_j.status()})
@@ -2090,6 +2095,9 @@ POST_ROUTES = {
     "/api/agency/models/select": lambda q, d: _provider_model(d),
     "/api/agency/models/disconnect": lambda q, d: _provider_disconnect(d),
     "/api/agency/models/test": lambda q, d: _provider_test(d),
+    "/api/agency/laya/install": lambda q, d: {"laya": __import__("laya_engine").install()},
+    "/api/agency/laya/start": lambda q, d: {"laya": __import__("laya_engine").start()},
+    "/api/agency/laya/stop": lambda q, d: {"laya": __import__("laya_engine").stop()},
     "/api/agency/jev/setup": lambda q, d: _jev_setup(d),
     "/api/agency/jev/disconnect": lambda q, d: _jev_disconnect(d),
     "/api/agency/voice/ask": lambda q, d: _voice_ask(d),
@@ -2401,10 +2409,13 @@ def _models_status() -> dict[str, Any]:
     import providers
     out = {"providers": providers.status()}
     out["signin"] = providers.signin_hint()
-    out["jev"] = {"connected": jev.connected(),
-                  "label": "Jev (TypeSafe AI)",
-                  "note": "Typed decisions — classification, routing and scoring with a "
-                          "confidence, instead of a full model call."}
+    import laya_engine
+    out["jev"] = {"connected": jev.connected(), "cloud": jev.cloud_connected(),
+                  "engines": jev.engines(), "laya": laya_engine.status(),
+                  "label": "Typed decisions",
+                  "note": "Classification, routing and scoring with a calibrated confidence, "
+                          "instead of a full model call. Laya runs free on this computer; "
+                          "Jev (TypeSafe) is the optional cloud engine."}
     return out
 
 

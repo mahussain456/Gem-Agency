@@ -29,7 +29,7 @@ ROUTES = {
     "monitor": "Activity", "builder": "Website builder", "approvals": "Approvals",
     "ai": "Ask the agency", "agency": "The Agency", "models": "Models",
     "integrations": "Integrations", "computer": "Computer use", "media": "Image & Video", "optimize": "Website audits",
-    "keywords": "Keywords", "backlinks": "Backlinks",
+    "seo": "OpenSEO", "backlinks": "Link outreach",
 }
 
 

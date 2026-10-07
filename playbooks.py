@@ -41,6 +41,9 @@ def _ctx(context: dict[str, Any], key: str, limit: int = 4000) -> str:
     return str(val)[:limit]
 
 
+SKIP_REBUILD_BELOW = 0.15   # p(worth rebuilding) under which the repair stage is skipped
+
+
 def _repair_needed(c: dict[str, Any]) -> tuple[bool, str]:
     """Decide whether the repair stage has anything worth doing.
 
@@ -67,7 +70,7 @@ def _repair_needed(c: dict[str, Any]) -> tuple[bool, str]:
     try:
         import jev
         if not jev.connected():
-            return False, f"{len(defects)} minor defect(s); repairing (Jev not connected to triage)."
+            return False, f"{len(defects)} minor defect(s); repairing (no decision engine to triage)."
         summary = "\n".join(
             f"- [{d.get('severity')}] {d.get('title')}: {d.get('detail', '')[:160]}" for d in defects[:12])
         res = jev.decide(
@@ -79,10 +82,14 @@ def _repair_needed(c: dict[str, Any]) -> tuple[bool, str]:
             timeout=20)
         answer = res["answers"]["worth_rebuilding"]
         p = jev.probability(answer)
-        if p < 0.5:
-            return True, (f"Jev judged {len(defects)} minor defect(s) not worth a rebuild "
-                          f"(p={p:.2f}, {res['ms']}ms).")
-        return False, f"Jev judged the defects worth repairing (p={p:.2f}, {res['ms']}ms)."
+        # Skip only when the engine is sure the defects are cosmetic. Measured on Laya's
+        # checkpoints (2026-10-07), a broken contact form scored 0.23 and a hidden mobile
+        # call-to-action 0.31: at the usual 0.5 those repairs would have been skipped.
+        if p < SKIP_REBUILD_BELOW:
+            return True, (f"{res.get('engine_label', 'The decision engine')} judged {len(defects)} minor "
+                          f"defect(s) not worth a rebuild (p={p:.2f}, {res['ms']}ms).")
+        return False, (f"{res.get('engine_label', 'The decision engine')} judged the defects worth "
+                       f"repairing (p={p:.2f}, {res['ms']}ms).")
     except Exception as exc:
         # A triage failure must never skip real work.
         return False, f"{len(defects)} minor defect(s); repairing (triage unavailable: {exc})."

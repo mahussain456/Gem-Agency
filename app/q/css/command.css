@@ -214,3 +214,11 @@ html:not([data-motion="off"]) .md-card.busy .md-preview{animation:sh 1.6s linear
 html:not([data-motion="off"]) .os-steps li.now .os-dot{animation:os-pulse 1.4s ease-in-out infinite}
 @keyframes os-pulse{50%{box-shadow:0 0 0 6px transparent}}
 @media(max-width:767px){.os-note{flex-wrap:wrap}.os-note .btn{margin-left:28px}.os-frame iframe{height:calc(100vh - 170px)}}
+
+/* ---------- typed decisions: Laya (local) and Jev (cloud) ---------- */
+.dec-engine{padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-sm);margin-top:8px}
+.dec-h{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.dec-h>svg{width:15px;height:15px;stroke:var(--tx-2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dec-h b{color:var(--tx);font-size:13px}
+.dec-h .r{margin-left:auto}
+.dec-a{display:flex;gap:8px;margin-top:8px}
