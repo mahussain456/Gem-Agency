@@ -90,9 +90,19 @@ def status() -> dict[str, Any]:
         try:
             _access_token()
         except GSCError as exc:
-            out["error"] = str(exc)
+            out["error"] = _explain(str(exc))
             out["connected"] = False
+            out["reconnect"] = "invalid_grant" in str(exc)
     return out
+
+
+def _explain(error: str) -> str:
+    """Google's invalid_grant is opaque; say what it means and how to stop it recurring."""
+    if "invalid_grant" in error:
+        return ("Google ended this connection (the sign-in expired or was revoked). Click Reconnect. "
+                "If it keeps expiring about every 7 days, the Google Cloud OAuth app is in Testing mode: "
+                "publish it (OAuth consent screen, Publish app) and sign-ins stop expiring.")
+    return error
 
 
 # ---------- oauth ----------

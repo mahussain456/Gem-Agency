@@ -13,11 +13,11 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 | Section | What you get |
 |---|---|
 | **Overview** | Every website with a real preview (a built page or a screenshot of the live site), its stage, and the one decision waiting on you. |
-| **Websites** | Each project's pipeline: idea → research → design/content → build and checks → review → launch → growth. Includes a "Mark as live" step that asks for the published address. |
+| **Websites** | Each project's pipeline: idea → research → design/content → build and checks → review → launch → growth. Includes a "Mark as live" step that asks for the published address. A live site can go on **Autopilot**: a fresh SEO campaign every week, two weeks or month. Off by default, because each run uses model credits; approvals still wait for you. |
 | **Builder** | Pipeline runs, their stages and their outputs. |
 | **The office** | Your agent team as a live 3D office. Each agent has a desk; they sit and type only while a live pipeline stage (or an Ask-the-agency run) is theirs, raise a hand while a run waits on your approval, and relax in the lounge otherwise. Click a name to see their current task and jump to the project. Runs on real data only, offline (three.js is bundled), pauses when the tab is hidden, and respects reduced motion. |
 | **OpenSEO** | The open-source SEO suite [every-app/open-seo](https://github.com/every-app/open-seo), running on this PC and shown inside the dashboard: keyword research, rank tracking, backlinks, domain overview, site audits, AI search visibility and Search Console insights. The dashboard installs, starts and stops it; opening the page starts it. Its SEO data comes from DataForSEO, using the same key the dashboard uses. |
-| **Growth (SEO / AEO / GEO)** | Audits, findings, keywords and backlinks. These stages always run on Claude or ChatGPT, never on the local model. With no data source connected, it says so and invents nothing. |
+| **Growth (SEO / AEO / GEO)** | Search Console results, the next fixes to make, and link outreach. These stages always run on Claude or ChatGPT, never on the local model. With no data source connected, it says so and invents nothing. **Client reports:** on the first of each month every client with a website gets its report saved as a PDF (printed by your installed Chrome); you can also generate one any time or open the live version. |
 | **Approvals** | Anything that needs your sign-off before the pipeline continues. |
 | **Jarvis** | Voice assistant. Open conversation, like ChatGPT voice. Hands-free mode, interrupt it by speaking, sentence-by-sentence speech. It can navigate and trigger actions from a checked list. |
 | **Computer use 2.0** | An AI operates an isolated Chrome on this PC. It works two ways in one task: through the page's structure (read the page, click or type by element number, fetch a URL's raw response for robots.txt, sitemaps, headers and redirects) and through the screen for anything visual. Three brains: Claude and ChatGPT (paid API calls; they read and see), and **Local** on Ollama (free and private; it reads only). Auto tries Claude, then ChatGPT, then Local, handing over only before anything is clicked. ChatGPT's safety checks wait for your approval; password and card fields refuse input. Sessions are saved under `workspace/computer`. |
@@ -29,7 +29,8 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 
 Every AI call tries **Claude → ChatGPT → Ollama (local)**, in that order.
 
-- A provider that is failing (out of credit, rate limited, offline) moves to the back of the line for 15 minutes. You see the real error in the UI.
+- A provider that is failing (rate limited, offline) moves to the back of the line for 15 minutes. You see the real error in the UI.
+- An out-of-credit or billing error keeps it at the back for 6 hours, and this survives a restart (`workspace/provider_health.json`). So when Claude has no credit, builds go straight to ChatGPT instead of asking Claude again before every stage. One successful Claude call clears it.
 - Streaming replies fall back only before the first word arrives, so an answer never switches brain halfway through.
 - Ollama only uses models installed on your machine. Cloud models are refused.
 - SEO, AEO and GEO work is locked to Claude or ChatGPT.
@@ -105,7 +106,7 @@ After you connect a provider, the model list comes from the account itself, so m
 | Integration | Where | Stored in (gitignored) |
 |---|---|---|
 | Image & Video (Muapi) | Image & Video → API key, or `MUAPI_API_KEY` | `.muapi_credentials.json` |
-| Google Search Console | Integrations → Search Console (OAuth client ID and secret) | `.gsc_credentials.json`, `.gsc_token.json` |
+| Google Search Console | Integrations → Search Console (OAuth client ID and secret). After you connect, every client whose website matches a Search Console property is mapped automatically (domain properties first); clients with no match are listed, never guessed. If your Google Cloud OAuth app is in *Testing* mode, Google expires the sign-in after 7 days: publish the app (OAuth consent screen → Publish app) to stop that. The dashboard says when a reconnect is needed. | `.gsc_credentials.json`, `.gsc_token.json` |
 | DataForSEO | Integrations → DataForSEO. Entered once; the dashboard and OpenSEO both use it, and a running OpenSEO restarts with a new key | `.dataforseo_credentials.json` |
 | OpenSEO | OpenSEO in the sidebar → Install OpenSEO (one time, a few minutes). Runs on `127.0.0.1:3001`; set `OPENSEO_PORT` to change it | `openseo/` (gitignored checkout), `workspace/openseo/` |
 | Hermes gateway (optional, advanced) | Runs separately on `127.0.0.1:8643`; set `HERMES_HOME` if it is not in `%LOCALAPPDATA%\hermes` | its own `.env` |
@@ -164,9 +165,10 @@ node scripts/sync_media_models.mjs
 ## Project layout
 
 ```
-server.py          HTTP server, static files, legacy mission/bridge APIs
+server.py          HTTP server, static files, the snapshot/events feed and the chat bridge
 agency.py          Gem Agency API: projects, runs, approvals, media, computer use, voice
 runner.py          Persistent pipeline runner
+autopilot.py       Scheduled SEO campaigns per site and monthly client report PDFs
 playbooks.py       Pipeline definitions (website build, SEO campaign)
 providers.py       Brain chain: Claude → ChatGPT → Ollama, health tracking, streaming
 jarvis.py          Conversational voice endpoint and action vocabulary

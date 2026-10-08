@@ -9,14 +9,11 @@ SQLite in this project directory.
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 import mimetypes
 import os
 import re
 import queue
-import secrets
 import sqlite3
 import subprocess
 import sys
@@ -33,17 +30,12 @@ from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 import agency
-import multipart
 
 HOST = os.environ.get("MISSION_CONTROL_HOST", "127.0.0.1")
 PORT = int(os.environ.get("MISSION_CONTROL_PORT", "51764"))
 PROJECT_DIR = Path(__file__).resolve().parent
 INDEX_PATH = PROJECT_DIR / "app" / "q" / "index.html"
-BOARD_DB = PROJECT_DIR / "board.db"
 BRIDGE_DB = PROJECT_DIR / "bridge.db"
-WORKFLOW_DB = PROJECT_DIR / "workflows.db"
-MISSION_DB = PROJECT_DIR / "missions.db"
-MISSION_MEMORY_DB = PROJECT_DIR / "mission_memory.db"
 # Windows Hermes Desktop home. Override with HERMES_HOME if needed.
 LOCAL_HERMES_HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "hermes"
 HERMES_HOME = Path(os.environ.get("HERMES_HOME") or LOCAL_HERMES_HOME).expanduser()
@@ -52,14 +44,10 @@ HERMES_ENV_PATH = HERMES_HOME / ".env"
 # hard fallback to the Hermes Desktop home so a stray HERMES_HOME or working
 # directory cannot make bridge auth disappear.
 DEFAULT_HERMES_ENV_PATH = LOCAL_HERMES_HOME / ".env"
-CONTENT_ROOT = Path(os.environ.get("MISSION_CONTROL_CONTENT_ROOT", str(HERMES_HOME / "content"))).expanduser().resolve()
 UPLOAD_ROOT = Path(os.environ.get("MISSION_CONTROL_ATTACHMENTS_ROOT", str(PROJECT_DIR / "uploads"))).expanduser().resolve()
 GATEWAY_CHAT_URL = os.environ.get("MISSION_CONTROL_GATEWAY_CHAT_URL", "http://127.0.0.1:8643/v1/chat/completions")
-UPLOADS_DIR = PROJECT_DIR / "uploads"
 MAX_UPLOAD_BYTES = int(os.environ.get("MISSION_CONTROL_MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
 MAX_INLINE_IMAGE_BYTES = int(os.environ.get("MISSION_CONTROL_MAX_INLINE_IMAGE_BYTES", str(5 * 1024 * 1024)))
-MAX_TEXT_PREVIEW_CHARS = int(os.environ.get("MISSION_CONTROL_MAX_TEXT_PREVIEW_CHARS", "12000"))
-TEXT_UPLOAD_SUFFIXES = {".txt", ".md", ".markdown", ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".csv", ".tsv", ".log", ".html", ".htm", ".css", ".xml", ".sql", ".sh", ".bash", ".bat", ".ps1"}
 MAX_UPLOAD_BYTES = int(os.environ.get("MISSION_CONTROL_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
 MAX_INLINE_IMAGE_BYTES = int(os.environ.get("MISSION_CONTROL_MAX_INLINE_IMAGE_BYTES", str(5 * 1024 * 1024)))
 MAX_TEXT_ATTACHMENT_CHARS = int(os.environ.get("MISSION_CONTROL_MAX_TEXT_ATTACHMENT_CHARS", "12000"))
@@ -167,148 +155,6 @@ def api_server_key_diagnostics() -> str:
 API_SERVER_KEY = api_server_key()
 
 
-def ensure_uploads_dir() -> None:
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def sanitize_filename(name: str) -> str:
-    cleaned = ''.join(ch if ch.isalnum() or ch in {'-', '_', '.'} else '-' for ch in str(name or 'upload').strip())
-    cleaned = cleaned.strip('.-') or 'upload'
-    return cleaned[:120]
-
-
-def attachment_meta_path(attachment_id: str) -> Path:
-    return UPLOADS_DIR / f"{attachment_id}.json"
-
-
-def attachment_file_path(meta: dict[str, Any]) -> Path:
-    stored_name = meta.get('stored_name')
-    if not stored_name:
-        raise FileNotFoundError('stored file missing')
-    return UPLOADS_DIR / str(stored_name)
-
-
-def attachment_public_url(meta: dict[str, Any]) -> str:
-    return f"/api/uploads/{meta.get('id')}/{quote(str(meta.get('name') or 'attachment'))}"
-
-
-def attachment_kind(name: str, mime_type: str) -> str:
-    mime = str(mime_type or '').lower()
-    suffix = Path(name or '').suffix.lower()
-    if mime.startswith('image/'):
-        return 'image'
-    if mime.startswith('text/') or suffix in TEXT_UPLOAD_SUFFIXES:
-        return 'text'
-    return 'binary'
-
-
-def read_text_preview(blob: bytes) -> str:
-    return blob.decode('utf-8', errors='replace').replace('\x00', ' ').strip()[:MAX_TEXT_PREVIEW_CHARS]
-
-
-def save_uploaded_file(field: multipart.Part) -> dict[str, Any]:
-    ensure_uploads_dir()
-    raw_name = getattr(field, 'filename', None) or 'upload'
-    name = sanitize_filename(raw_name)
-    mime_type = (getattr(field, 'type', None) or mimetypes.guess_type(name)[0] or 'application/octet-stream').lower()
-    blob = field.file.read(MAX_UPLOAD_BYTES + 1)
-    if len(blob) > MAX_UPLOAD_BYTES:
-        raise ValueError(f'file exceeds {MAX_UPLOAD_BYTES} byte limit')
-    attachment_id = str(uuid.uuid4())
-    stored_name = f"{attachment_id}__{name}"
-    meta = {'id': attachment_id, 'name': name, 'stored_name': stored_name, 'mime': mime_type, 'size': len(blob), 'kind': attachment_kind(name, mime_type), 'created_at': now_iso()}
-    preview_text = ''
-    if meta['kind'] == 'text':
-        preview_text = read_text_preview(blob)
-        meta['preview_text'] = preview_text
-    file_path = UPLOADS_DIR / stored_name
-    file_path.write_bytes(blob)
-    attachment_meta_path(attachment_id).write_text(json.dumps(meta, ensure_ascii=False), encoding='utf-8')
-    return {'id': attachment_id, 'name': name, 'mime': mime_type, 'size': len(blob), 'kind': meta['kind'], 'preview_text': preview_text, 'url': attachment_public_url(meta)}
-
-
-def load_attachment_meta(attachment_id: str) -> dict[str, Any]:
-    if not re.fullmatch(r'[0-9a-fA-F-]{8,64}', str(attachment_id or '')):
-        raise ValueError('invalid attachment id')
-    path = attachment_meta_path(str(attachment_id))
-    if not path.exists():
-        raise FileNotFoundError('attachment not found')
-    meta = json.loads(path.read_text(encoding='utf-8'))
-    attachment_file_path(meta)
-    return meta
-
-
-def resolve_attachment_infos(attachment_ids: Any) -> list[dict[str, Any]]:
-    out = []
-    for raw in list(attachment_ids or [])[:8]:
-        try:
-            meta = load_attachment_meta(str(raw))
-        except Exception:
-            continue
-        out.append({'id': meta.get('id'), 'name': meta.get('name'), 'mime': meta.get('mime'), 'size': meta.get('size'), 'kind': meta.get('kind'), 'preview_text': meta.get('preview_text', ''), 'url': attachment_public_url(meta)})
-    return out
-
-
-def attachment_data_url(meta: dict[str, Any]) -> str | None:
-    blob_path = attachment_file_path(meta)
-    size = int(meta.get('size') or 0)
-    if size > MAX_INLINE_IMAGE_BYTES:
-        return None
-    encoded = base64.b64encode(blob_path.read_bytes()).decode('ascii')
-    return f"data:{meta.get('mime') or 'application/octet-stream'};base64,{encoded}"
-
-
-def user_message_content(message: str, attachment_ids: Any = None) -> Any:
-    text = str(message or '').strip()
-    attachments = resolve_attachment_infos(attachment_ids)
-    if not attachments:
-        return text
-    lines = []
-    if text:
-        lines.append(text)
-    else:
-        lines.append('Please analyze the uploaded attachment(s) in this chat session and answer like ChatGPT with concrete help.')
-    lines.append('Uploaded attachment context:')
-    parts: list[dict[str, Any]] = []
-    for meta in attachments:
-        label = f"- {meta.get('name')} ({meta.get('kind')}, {meta.get('mime')}, {meta.get('size')} bytes)"
-        preview = str(meta.get('preview_text') or '').strip()
-        if preview:
-            label += f"\n{preview[:MAX_TEXT_PREVIEW_CHARS]}"
-        elif meta.get('kind') != 'image':
-            label += '\nBinary file uploaded. Work from metadata unless the user provides a text-export or asks for a specific conversion.'
-        lines.append(label)
-    parts.append({'type': 'text', 'text': '\n\n'.join(lines)})
-    for meta in attachments:
-        if meta.get('kind') != 'image':
-            continue
-        try:
-            full_meta = load_attachment_meta(str(meta.get('id')))
-            data_url = attachment_data_url(full_meta)
-        except Exception:
-            data_url = None
-        if data_url:
-            parts.append({'type': 'image_url', 'image_url': {'url': data_url}})
-        else:
-            parts[0]['text'] += f"\n\nImage note: {meta.get('name')} is too large to inline for vision, so reason from the metadata unless the user re-uploads a smaller image."
-    return parts
-
-
-def normalize_history_message(item: Any) -> dict[str, Any] | None:
-    if not isinstance(item, dict):
-        return None
-    role = str(item.get('role') or '').strip().lower()
-    if role not in {'user', 'assistant', 'system'}:
-        return None
-    content = item.get('content', '')
-    if role == 'user':
-        return {'role': 'user', 'content': user_message_content(str(content or ''), item.get('attachment_ids'))}
-    text = str(content or '').strip()
-    if not text:
-        return None
-    return {'role': role, 'content': text}
-
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -346,48 +192,6 @@ def safe_call(name: str, fn: Callable[[], Any]) -> dict[str, Any]:
 def read_json_file(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
-
-
-_SAFE_UPLOAD_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
-_TEXT_UPLOAD_SUFFIXES = {
-    ".txt", ".md", ".markdown", ".json", ".jsonl", ".csv", ".tsv", ".py", ".js", ".ts", ".tsx",
-    ".jsx", ".html", ".htm", ".css", ".scss", ".yaml", ".yml", ".xml", ".ini", ".cfg", ".toml",
-    ".log", ".sql", ".sh", ".bat", ".ps1", ".env", ".gitignore",
-}
-
-
-
-def bridge_user_message_content(message: str, attachments: list[dict[str, Any]] | None = None) -> str | list[dict[str, Any]]:
-    text = str(message or "").strip()
-    attachments = attachments or []
-    if not attachments:
-        return text
-    sections: list[str] = [text] if text else []
-    notes: list[str] = []
-    for item in attachments:
-        note = [
-            f"[Attached file: {item.get('filename')}]",
-            f"MIME: {item.get('mime_type')}",
-            f"Size: {item.get('size')} bytes",
-            f"Local path: {item.get('path')}",
-            f"Local URL: {item.get('url')}",
-        ]
-        preview = str(item.get("preview") or "").strip()
-        if preview:
-            note.append("Extracted text preview:\n" + preview)
-        elif item.get("is_image"):
-            note.append("This is an image attachment. Use your vision/image tools if you need pixel-level analysis.")
-        else:
-            note.append("This appears to be a binary or unsupported-text file. Use your available file tools on the local path if needed.")
-        notes.append("\n".join(note))
-    sections.append("The user attached the following files for this turn:\n\n" + "\n\n".join(notes))
-    text_block = {"type": "text", "text": "\n\n".join(s for s in sections if s).strip()}
-    parts: list[dict[str, Any]] = [text_block]
-    for item in attachments:
-        data_url = item.get("data_url")
-        if item.get("is_image") and isinstance(data_url, str) and data_url.startswith("data:image/"):
-            parts.append({"type": "image_url", "image_url": {"url": data_url}})
-    return parts if len(parts) > 1 else text_block["text"]
 
 
 def ro_sqlite(db_path: Path) -> sqlite3.Connection:
@@ -638,7 +442,6 @@ def vps_health() -> dict[str, Any]:
     }
 
 
-MONTHS = {'*': 'every month'}
 DOW = {'0':'Sunday','1':'Monday','2':'Tuesday','3':'Wednesday','4':'Thursday','5':'Friday','6':'Saturday','7':'Sunday'}
 
 
@@ -730,731 +533,6 @@ def normalized_crons(cron_payload: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-# ---------- Personal operator board ----------
-
-def board_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(BOARD_DB, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_board() -> None:
-    with board_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            priority TEXT DEFAULT 'medium',
-            notes TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT
-        )
-        """)
-        count = conn.execute("SELECT COUNT(*) AS n FROM tasks").fetchone()["n"]
-        if count == 0:
-            seed = [
-                ("Review overnight Hermes activity logs", "pending", "high", "Check failed responses and unusual agent silence."),
-                ("Validate Discord agent channel routing", "pending", "high", "Send one test prompt per agent channel."),
-                ("Draft weekly AI operations summary", "pending", "medium", "Summarize uptime, activity, and open work."),
-                ("Clean up stale local setup artifacts", "in_progress", "medium", "Archive bootstrap files before deleting anything."),
-                ("Tune Mission Control dashboard layout", "in_progress", "medium", "Prioritize gateway, activity, and sessions above the fold."),
-                ("Confirm monthly log retention cron", "completed", "high", "Verify first-of-month 03:00 schedule and manual test output."),
-                ("Document AgentOS role boundaries", "completed", "medium", "Keep Scout/Scribe/Reach/Dev responsibilities clear."),
-                ("Create shared activity logging policy", "completed", "high", "Ensure every agent logs before response."),
-            ]
-            ts = now_iso()
-            for title, status, priority, notes in seed:
-                conn.execute(
-                    "INSERT INTO tasks (id,title,status,priority,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-                    (str(uuid.uuid4()), title, status, priority, notes, ts, ts),
-                )
-
-
-def board_list() -> list[dict[str, Any]]:
-    init_board()
-    with board_conn() as conn:
-        return rows_to_dicts(conn.execute(
-            "SELECT id,title,status,priority,notes,created_at,updated_at FROM tasks ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at DESC"
-        ).fetchall())
-
-
-def board_create(data: dict[str, Any]) -> dict[str, Any]:
-    init_board()
-    title = str(data.get("title", "")).strip()
-    if not title:
-        raise ValueError("title is required")
-    status = str(data.get("status", "pending"))
-    priority = str(data.get("priority", "medium"))
-    notes = str(data.get("notes", ""))
-    ts = now_iso()
-    task = {"id": str(uuid.uuid4()), "title": title, "status": status, "priority": priority, "notes": notes, "created_at": ts, "updated_at": ts}
-    with board_conn() as conn:
-        conn.execute("INSERT INTO tasks (id,title,status,priority,notes,created_at,updated_at) VALUES (:id,:title,:status,:priority,:notes,:created_at,:updated_at)", task)
-    return task
-
-
-def board_update(task_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    init_board()
-    allowed = {"title", "status", "priority", "notes"}
-    fields = {k: str(v) for k, v in data.items() if k in allowed}
-    if not task_id:
-        raise ValueError("id is required")
-    if not fields:
-        raise ValueError("no update fields provided")
-    fields["updated_at"] = now_iso()
-    sets = ", ".join([f"{k}=?" for k in fields])
-    vals = list(fields.values()) + [task_id]
-    with board_conn() as conn:
-        cur = conn.execute(f"UPDATE tasks SET {sets} WHERE id=?", vals)
-        if cur.rowcount == 0:
-            raise KeyError("task not found")
-        row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
-        return dict(row)
-
-
-def board_delete(task_id: str) -> dict[str, Any]:
-    init_board()
-    if not task_id:
-        raise ValueError("id is required")
-    with board_conn() as conn:
-        cur = conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-        return {"deleted": cur.rowcount, "id": task_id}
-
-
-
-# ---------- Mission state cockpit ----------
-def mission_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(MISSION_DB, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _mission_json(value: Any, limit: int = 12) -> str:
-    if isinstance(value, str):
-        items = [line.strip(" -•\t") for line in value.splitlines() if line.strip()]
-    elif isinstance(value, list):
-        items = [str(x).strip() for x in value if str(x).strip()]
-    else:
-        items = []
-    return json.dumps(items[:limit], ensure_ascii=False)
-
-
-def _mission_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
-    out = dict(row)
-    for key in ("open_questions", "decisions", "artifacts", "blockers"):
-        try:
-            out[key] = json.loads(out.get(key) or "[]")
-        except Exception:
-            out[key] = []
-    try:
-        out["confidence"] = int(out.get("confidence") or 0)
-    except Exception:
-        out["confidence"] = 0
-    return out
-
-
-def init_missions() -> None:
-    with mission_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS missions (
-            id TEXT PRIMARY KEY,
-            objective TEXT NOT NULL,
-            phase TEXT DEFAULT 'Discovery',
-            active_agent TEXT DEFAULT '@orchestrator',
-            status TEXT DEFAULT 'active',
-            open_questions TEXT DEFAULT '[]',
-            decisions TEXT DEFAULT '[]',
-            artifacts TEXT DEFAULT '[]',
-            blockers TEXT DEFAULT '[]',
-            next_action TEXT DEFAULT '',
-            confidence INTEGER DEFAULT 70,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """)
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS mission_events (
-            id TEXT PRIMARY KEY,
-            mission_id TEXT NOT NULL,
-            ts TEXT NOT NULL,
-            agent TEXT DEFAULT '@orchestrator',
-            kind TEXT DEFAULT 'update',
-            text TEXT NOT NULL
-        )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_missions_updated ON missions(updated_at DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_mission_events_ts ON mission_events(ts DESC)")
-        count = conn.execute("SELECT COUNT(*) AS n FROM missions").fetchone()["n"]
-        if count == 0:
-            ts = now_iso()
-            mission_id = str(uuid.uuid4())
-            conn.execute(
-                """
-                INSERT INTO missions (id,objective,phase,active_agent,status,open_questions,decisions,artifacts,blockers,next_action,confidence,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    mission_id,
-                    "Build AgentOS Mission Control into a visible operating cockpit",
-                    "Build",
-                    "@forge",
-                    "active",
-                    _mission_json(["Which mission fields should agents update automatically first?"]),
-                    _mission_json(["Ship the mission/state layer before adding heavier review gates."]),
-                    _mission_json(["Mission Control dashboard", "Local SQLite mission ledger"]),
-                    _mission_json([]),
-                    "Expose mission state in the dashboard and verify the API/UI path.",
-                    78,
-                    ts,
-                    ts,
-                ),
-            )
-            conn.execute("INSERT INTO mission_events (id,mission_id,ts,agent,kind,text) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), mission_id, ts, "@forge", "created", "Mission cockpit seeded from Forge world-class AgentOS recommendation."))
-
-
-def mission_list(limit: int = 25) -> list[dict[str, Any]]:
-    init_missions()
-    limit = max(1, min(100, int(limit or 25)))
-    with mission_conn() as conn:
-        rows = conn.execute("SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'blocked' THEN 1 WHEN 'review' THEN 2 ELSE 3 END, updated_at DESC LIMIT ?", (limit,)).fetchall()
-    return [_mission_from_row(r) for r in rows]
-
-
-def mission_events(mission_id: str | None = None, limit: int = 40) -> list[dict[str, Any]]:
-    init_missions()
-    limit = max(1, min(200, int(limit or 40)))
-    with mission_conn() as conn:
-        if mission_id:
-            return rows_to_dicts(conn.execute("SELECT * FROM mission_events WHERE mission_id=? ORDER BY ts DESC LIMIT ?", (mission_id, limit)).fetchall())
-        return rows_to_dicts(conn.execute("SELECT * FROM mission_events ORDER BY ts DESC LIMIT ?", (limit,)).fetchall())
-
-
-def mission_payload(data: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
-    existing = existing or {}
-    objective = str(data.get("objective") if data.get("objective") is not None else existing.get("objective", "")).strip()
-    if not objective:
-        raise ValueError("objective is required")
-    active_agent = validate_bridge_target(data.get("active_agent") if data.get("active_agent") is not None else existing.get("active_agent", "@orchestrator"))
-    status = str(data.get("status") if data.get("status") is not None else existing.get("status", "active")).strip().lower()[:40] or "active"
-    try:
-        confidence = max(0, min(100, int(data.get("confidence") if data.get("confidence") is not None else existing.get("confidence", 70))))
-    except Exception:
-        confidence = 70
-    return {
-        "objective": objective[:220],
-        "phase": str(data.get("phase") if data.get("phase") is not None else existing.get("phase", "Discovery")).strip()[:80] or "Discovery",
-        "active_agent": active_agent,
-        "status": status,
-        "open_questions": _mission_json(data.get("open_questions") if data.get("open_questions") is not None else existing.get("open_questions", [])),
-        "decisions": _mission_json(data.get("decisions") if data.get("decisions") is not None else existing.get("decisions", [])),
-        "artifacts": _mission_json(data.get("artifacts") if data.get("artifacts") is not None else existing.get("artifacts", [])),
-        "blockers": _mission_json(data.get("blockers") if data.get("blockers") is not None else existing.get("blockers", [])),
-        "next_action": str(data.get("next_action") if data.get("next_action") is not None else existing.get("next_action", "")).strip()[:500],
-        "confidence": confidence,
-    }
-
-
-def mission_create(data: dict[str, Any]) -> dict[str, Any]:
-    init_missions()
-    item = mission_payload(data)
-    ts = now_iso()
-    row = {"id": str(uuid.uuid4()), **item, "created_at": ts, "updated_at": ts}
-    with mission_conn() as conn:
-        conn.execute("""
-        INSERT INTO missions (id,objective,phase,active_agent,status,open_questions,decisions,artifacts,blockers,next_action,confidence,created_at,updated_at)
-        VALUES (:id,:objective,:phase,:active_agent,:status,:open_questions,:decisions,:artifacts,:blockers,:next_action,:confidence,:created_at,:updated_at)
-        """, row)
-        conn.execute("INSERT INTO mission_events (id,mission_id,ts,agent,kind,text) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), row["id"], ts, row["active_agent"], "created", row["objective"]))
-    return _mission_from_row(row)
-
-
-def mission_update(mission_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    init_missions()
-    if not mission_id:
-        raise ValueError("id is required")
-    with mission_conn() as conn:
-        existing = conn.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
-        if not existing:
-            raise KeyError("mission not found")
-        existing_dict = _mission_from_row(existing)
-        item = mission_payload(data, existing_dict)
-        row = {"id": mission_id, **item, "updated_at": now_iso()}
-        conn.execute("""
-        UPDATE missions SET objective=:objective,phase=:phase,active_agent=:active_agent,status=:status,open_questions=:open_questions,decisions=:decisions,artifacts=:artifacts,blockers=:blockers,next_action=:next_action,confidence=:confidence,updated_at=:updated_at WHERE id=:id
-        """, row)
-        conn.execute("INSERT INTO mission_events (id,mission_id,ts,agent,kind,text) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), mission_id, row["updated_at"], row["active_agent"], "updated", f"{row['phase']} · {row['next_action'] or row['status']}"))
-        saved = conn.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
-    return _mission_from_row(saved)
-
-
-def mission_fork(mission_id: str | None = None, instruction: str = "") -> dict[str, Any]:
-    init_missions()
-    source = None
-    with mission_conn() as conn:
-        if mission_id:
-            source = conn.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
-        if source is None:
-            source = conn.execute("SELECT * FROM missions ORDER BY updated_at DESC LIMIT 1").fetchone()
-        if source is None:
-            raise KeyError("mission not found")
-        src = _mission_from_row(source)
-        ts = now_iso()
-        new_id = str(uuid.uuid4())
-        objective = (instruction.strip() or f"Fork: {src.get('objective', 'Mission')}")[:220]
-        row = {
-            "id": new_id,
-            "objective": objective,
-            "phase": "Forked",
-            "active_agent": src.get("active_agent") or "@orchestrator",
-            "status": "active",
-            "open_questions": _mission_json(src.get("open_questions") or []),
-            "decisions": _mission_json((src.get("decisions") or []) + [f"Forked from mission {src.get('id')}"]),
-            "artifacts": _mission_json(src.get("artifacts") or []),
-            "blockers": _mission_json([]),
-            "next_action": "Replay or revise the mission from this checkpoint.",
-            "confidence": max(30, min(100, int(src.get("confidence") or 70))),
-            "created_at": ts,
-            "updated_at": ts,
-        }
-        conn.execute("""
-        INSERT INTO missions (id,objective,phase,active_agent,status,open_questions,decisions,artifacts,blockers,next_action,confidence,created_at,updated_at)
-        VALUES (:id,:objective,:phase,:active_agent,:status,:open_questions,:decisions,:artifacts,:blockers,:next_action,:confidence,:created_at,:updated_at)
-        """, row)
-        conn.execute("INSERT INTO mission_events (id,mission_id,ts,agent,kind,text) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, ts, row["active_agent"], "forked", f"Forked from {src.get('id')}"))
-    return _mission_from_row(row)
-
-
-def mission_add_event(data: dict[str, Any]) -> dict[str, Any]:
-    init_missions()
-    mission_id = str(data.get("mission_id") or "").strip()
-    text = str(data.get("text") or "").strip()
-    if not mission_id:
-        active = mission_list(1)
-        mission_id = active[0]["id"] if active else ""
-    if not mission_id or not text:
-        raise ValueError("mission_id and text are required")
-    agent = validate_bridge_target(data.get("agent") or data.get("active_agent") or "@orchestrator")
-    kind = str(data.get("kind") or "update").strip()[:40] or "update"
-    ts = now_iso()
-    row = {"id": str(uuid.uuid4()), "mission_id": mission_id, "ts": ts, "agent": agent, "kind": kind, "text": text[:1000]}
-    with mission_conn() as conn:
-        conn.execute("INSERT INTO mission_events (id,mission_id,ts,agent,kind,text) VALUES (:id,:mission_id,:ts,:agent,:kind,:text)", row)
-        conn.execute("UPDATE missions SET updated_at=? WHERE id=?", (ts, mission_id))
-    return row
-
-
-def mission_summary() -> dict[str, Any]:
-    missions = mission_list(10)
-    active = missions[0] if missions else None
-    events = mission_events(active.get("id") if active else None, 12) if active else []
-    if not active:
-        return {"active": None, "missions": [], "events": [], "objective": "No active mission yet.", "phase": "Ready", "owner": "Orchestrator", "target": "@orchestrator", "updated_at": now_iso(), "decisions": [], "artifacts": [], "phases": []}
-    owner = BRIDGE_TARGETS.get(active.get("active_agent"), {}).get("name", str(active.get("active_agent", "@orchestrator")).lstrip("@").title())
-    decisions = [{"label": active.get("active_agent"), "summary": x, "ts": active.get("updated_at")} for x in (active.get("decisions") or [])]
-    artifacts = [{"title": x, "agent": owner, "type": "mission", "modified_at": active.get("updated_at")} for x in (active.get("artifacts") or [])]
-    blockers = active.get("blockers") or []
-    phases = [
-        {"id": "goal", "label": "Goal", "owner": owner, "status": "active", "summary": active.get("objective", ""), "evidence": active.get("created_at")},
-        {"id": "plan", "label": "Plan", "owner": "Orchestrator", "status": "ready" if active.get("open_questions") else "waiting", "summary": "; ".join(active.get("open_questions") or ["No open questions captured."]), "evidence": active.get("updated_at")},
-        {"id": "build", "label": "Build", "owner": owner, "status": active.get("status") or "active", "summary": active.get("next_action") or "No next action captured.", "evidence": f"Confidence {active.get('confidence', 0)}%"},
-        {"id": "verify", "label": "Verify", "owner": "Forge / Rank", "status": "blocked" if blockers else "ready", "summary": "; ".join(blockers or ["No blockers recorded."]), "evidence": f"{len(events)} ledger events"},
-        {"id": "ship", "label": "Ship", "owner": "Scribe / Orchestrator", "status": "ready" if artifacts else "waiting", "summary": f"{len(artifacts)} artifact(s) recorded.", "evidence": active.get("updated_at")},
-    ]
-    normalized_missions = []
-    for m in missions:
-        normalized = dict(m)
-        normalized.setdefault("title", m.get("objective", "Mission")[:80])
-        normalized.setdefault("owner", BRIDGE_TARGETS.get(m.get("active_agent"), {}).get("name", str(m.get("active_agent", "@orchestrator")).lstrip("@").title()))
-        normalized.setdefault("evidence", m.get("artifacts") or [])
-        normalized_missions.append(normalized)
-    normalized_events = [{**e, "summary": e.get("text", ""), "status": e.get("kind", "logged")} for e in events]
-    return {"active": active, "missions": normalized_missions, "events": normalized_events, "objective": active.get("objective"), "phase": active.get("phase"), "owner": owner, "target": active.get("active_agent"), "updated_at": active.get("updated_at"), "decisions": decisions, "artifacts": artifacts, "phases": phases}
-
-
-# ---------- Shared Mission Memory ----------
-MISSION_MEMORY_LIST_FIELDS = ("constraints", "open_questions", "decisions", "artifacts", "blocked_items")
-
-
-def mission_memory_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(MISSION_MEMORY_DB, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _memory_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        raw_items = value.replace("\r\n", "\n").replace("\r", "\n").replace(",", "\n").split("\n")
-    elif isinstance(value, list):
-        raw_items = value
-    else:
-        return []
-    items: list[str] = []
-    for raw in raw_items:
-        if not isinstance(raw, str):
-            continue
-        item = raw.strip()
-        if item:
-            items.append(item[:500])
-    return items[:40]
-
-def _mission_memory_row(row: sqlite3.Row, timeline: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    item = dict(row)
-    for field in MISSION_MEMORY_LIST_FIELDS:
-        try:
-            item[field] = json.loads(item.get(field) or "[]")
-        except Exception:
-            item[field] = []
-    item["timeline"] = timeline or []
-    return item
-
-
-def init_mission_memory() -> None:
-    conn = mission_memory_conn()
-    try:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS missions (
-            id TEXT PRIMARY KEY,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active',
-            goal TEXT NOT NULL,
-            constraints TEXT DEFAULT '[]',
-            current_hypothesis TEXT DEFAULT '',
-            open_questions TEXT DEFAULT '[]',
-            decisions TEXT DEFAULT '[]',
-            artifacts TEXT DEFAULT '[]',
-            blocked_items TEXT DEFAULT '[]',
-            next_best_action TEXT DEFAULT '',
-            owner_agent TEXT DEFAULT 'orchestrator'
-        )
-        """)
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS mission_events (
-            id TEXT PRIMARY KEY,
-            mission_id TEXT NOT NULL,
-            ts TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            agent TEXT NOT NULL,
-            text TEXT NOT NULL
-        )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_mission_memory_events_ts ON mission_events(ts DESC)")
-        count = conn.execute("SELECT COUNT(*) AS n FROM missions").fetchone()["n"]
-        if count == 0:
-            ts = now_iso()
-            mission_id = str(uuid.uuid4())
-            seed = {
-                "id": mission_id,
-                "created_at": ts,
-                "updated_at": ts,
-                "status": "active",
-                "goal": "Build Mission Memory: a shared operational brain for AgentOS work.",
-                "constraints": json.dumps(["Local-first", "Python stdlib only", "Preserve existing Mission Control APIs"], ensure_ascii=False),
-                "current_hypothesis": "Structured mission state improves multi-agent handoffs and resumption.",
-                "open_questions": json.dumps(["Which agent owns the next best action?"], ensure_ascii=False),
-                "decisions": json.dumps(["Use one active SQLite mission row plus an event timeline."], ensure_ascii=False),
-                "artifacts": json.dumps(["server.py", "index.html", "mission_memory.db"], ensure_ascii=False),
-                "blocked_items": json.dumps([], ensure_ascii=False),
-                "next_best_action": "Review and update this mission state after each significant crew decision.",
-                "owner_agent": "orchestrator",
-            }
-            conn.execute("""
-            INSERT INTO missions (id,created_at,updated_at,status,goal,constraints,current_hypothesis,open_questions,decisions,artifacts,blocked_items,next_best_action,owner_agent)
-            VALUES (:id,:created_at,:updated_at,:status,:goal,:constraints,:current_hypothesis,:open_questions,:decisions,:artifacts,:blocked_items,:next_best_action,:owner_agent)
-            """, seed)
-            conn.execute("INSERT INTO mission_events (id,mission_id,ts,kind,agent,text) VALUES (?,?,?,?,?,?)", (
-                str(uuid.uuid4()), mission_id, ts, "decision", "orchestrator", "Mission Memory initialized as the shared AgentOS state layer."
-            ))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def mission_memory_current() -> dict[str, Any]:
-    init_mission_memory()
-    conn = mission_memory_conn()
-    try:
-        row = conn.execute("SELECT * FROM missions WHERE status='active' ORDER BY updated_at DESC LIMIT 1").fetchone()
-        if row is None:
-            raise RuntimeError("no active mission memory row")
-        timeline = rows_to_dicts(conn.execute("SELECT id,ts,kind,agent,text FROM mission_events WHERE mission_id=? ORDER BY ts DESC LIMIT 40", (row["id"],)).fetchall())
-        return _mission_memory_row(row, timeline)
-    finally:
-        conn.close()
-
-
-def mission_memory_update(data: dict[str, Any]) -> dict[str, Any]:
-    current = mission_memory_current()
-    updates: dict[str, Any] = {}
-    for field in ("goal", "current_hypothesis", "next_best_action"):
-        if field in data:
-            updates[field] = str(data.get(field) or "").strip()[:2000]
-    if "owner_agent" in data:
-        owner = str(data.get("owner_agent") or "orchestrator").strip().lower().lstrip("@")
-        if owner == "all" or f"@{owner}" not in BRIDGE_TARGETS:
-            owner = "orchestrator"
-        updates["owner_agent"] = owner
-    for field in MISSION_MEMORY_LIST_FIELDS:
-        if field in data:
-            updates[field] = json.dumps(_memory_list(data.get(field)), ensure_ascii=False)
-    if not updates:
-        return current
-    updates["updated_at"] = now_iso()
-    sets = ", ".join(f"{k}=?" for k in updates)
-    vals = list(updates.values()) + [current["id"]]
-    conn = mission_memory_conn()
-    try:
-        conn.execute(f"UPDATE missions SET {sets} WHERE id=?", vals)
-        summary = "; ".join(f"{k}: {v}" for k, v in updates.items() if k in {"goal", "next_best_action", "owner_agent"}) or "structured mission state updated"
-        conn.execute("INSERT INTO mission_events (id,mission_id,ts,kind,agent,text) VALUES (?,?,?,?,?,?)", (
-            str(uuid.uuid4()), current["id"], updates["updated_at"], str(data.get("event_kind") or "update")[:40], str(data.get("agent") or updates.get("owner_agent") or current.get("owner_agent") or "orchestrator")[:80], summary[:2000]
-        ))
-        conn.commit()
-    finally:
-        conn.close()
-    return mission_memory_current()
-
-
-# ---------- Workflow Launchpad durable state ----------
-def workflow_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(WORKFLOW_DB, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_workflows() -> None:
-    with workflow_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS workflows (
-            id TEXT PRIMARY KEY,
-            ts TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            title TEXT NOT NULL,
-            owner TEXT NOT NULL,
-            accent TEXT DEFAULT '#A78BFA',
-            description TEXT DEFAULT '',
-            steps TEXT DEFAULT '[]',
-            prompt TEXT NOT NULL,
-            is_builtin INTEGER DEFAULT 0
-        )
-        """)
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS workflow_runs (
-            id TEXT PRIMARY KEY,
-            workflow_id TEXT NOT NULL,
-            workflow_title TEXT NOT NULL,
-            target TEXT NOT NULL,
-            status TEXT NOT NULL,
-            prompt TEXT NOT NULL,
-            artifact TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_updated ON workflows(updated_at DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(created_at DESC)")
-        # Keep built-in templates self-healing: new releases can add templates
-        # without requiring operators to delete an existing workflows.db.
-        ts = now_iso()
-        builtin_templates = [
-            {
-                "id": "builtin-review-repo",
-                "title": "Review this repo",
-                "owner": "@forge",
-                "accent": "#C98635",
-                "description": "Inspect architecture, risky files, tests, and ship a prioritized review with evidence.",
-                "steps": ["Map repo", "Read hot paths", "Run checks", "Report risks", "Suggest fixes"],
-                "prompt": "Review this repository end-to-end. Map the architecture, identify risky or low-quality areas, run available verification checks, and return prioritized findings with file paths and evidence.",
-            },
-            {
-                "id": "builtin-fix-tests",
-                "title": "Fix failing tests",
-                "owner": "@dev",
-                "accent": "#D6A85A",
-                "description": "Reproduce failures, find root cause, patch minimally, and verify green tests.",
-                "steps": ["Reproduce", "Trace cause", "Patch", "Run focused test", "Run full suite"],
-                "prompt": "Fix the failing tests systematically: reproduce the exact failure, identify the root cause before changing code, implement the smallest safe fix, then run focused and full verification.",
-            },
-            {
-                "id": "builtin-research-competitor",
-                "title": "Research competitor",
-                "owner": "@scout",
-                "accent": "#7DB79C",
-                "description": "Gather sources, compare positioning, pricing, features, gaps, and actionable moves.",
-                "steps": ["Find sources", "Extract facts", "Compare", "Spot gaps", "Recommend moves"],
-                "prompt": "Research this competitor using current sources. Summarize positioning, pricing, feature set, proof points, weaknesses, and the top opportunities we can exploit. Include source URLs.",
-            },
-            {
-                "id": "builtin-draft-pr",
-                "title": "Draft PR",
-                "owner": "@forge",
-                "accent": "#B7E4C7",
-                "description": "Turn local changes into a clean PR summary, test evidence, risks, and reviewer notes.",
-                "steps": ["Read diff", "Group changes", "List tests", "Call out risks", "Draft PR"],
-                "prompt": "Draft a high-quality pull request description for the current changes. Include summary, implementation notes, tests run, screenshots or artifacts if relevant, risks, and reviewer checklist.",
-            },
-            {
-                "id": "builtin-debug-service",
-                "title": "Debug local service",
-                "owner": "@dev",
-                "accent": "#D07868",
-                "description": "Check listener, logs, health endpoints, auth, and exact failing boundary.",
-                "steps": ["Check process", "Probe endpoints", "Read logs", "Trace auth", "Patch or report blocker"],
-                "prompt": "Debug this local service live. Verify the listener, health endpoints, logs, environment/auth, and exact failing boundary. Fix only after root cause is clear, then prove it with a real request.",
-            },
-            {
-                "id": "builtin-summarize-meeting",
-                "title": "Summarize meeting",
-                "owner": "@scribe",
-                "accent": "#B08AC6",
-                "description": "Turn notes or transcript into decisions, owners, action items, risks, and follow-up drafts.",
-                "steps": ["Extract agenda", "Capture decisions", "Assign actions", "Flag risks", "Draft follow-up"],
-                "prompt": "Summarize this meeting or transcript. Extract attendees if available, decisions, action items with owners and dates, unresolved questions, risks, and a concise follow-up message.",
-            },
-            {
-                "id": "builtin-build-feature",
-                "title": "Build feature from issue",
-                "owner": "@forge",
-                "accent": "#A989D6",
-                "description": "Convert an issue into implementation, tests, verification, and ship notes.",
-                "steps": ["Clarify acceptance", "Find code paths", "Implement", "Test", "Summarize"],
-                "prompt": "Build the feature described in this issue. Determine acceptance criteria, inspect relevant code paths, implement the change, add or update tests where practical, run verification, and summarize files changed.",
-            },
-        ]
-        for item in builtin_templates:
-            row = {**item, "ts": ts, "updated_at": ts, "steps": json.dumps(item["steps"], ensure_ascii=False), "is_builtin": 1}
-            conn.execute("INSERT OR IGNORE INTO workflows (id,ts,updated_at,title,owner,accent,description,steps,prompt,is_builtin) VALUES (:id,:ts,:updated_at,:title,:owner,:accent,:description,:steps,:prompt,:is_builtin)", row)
-
-
-def workflow_list() -> list[dict[str, Any]]:
-    init_workflows()
-    init_missions()
-    with workflow_conn() as conn:
-        rows = rows_to_dicts(conn.execute("SELECT * FROM workflows ORDER BY updated_at DESC").fetchall())
-    for row in rows:
-        try:
-            row["steps"] = json.loads(row.get("steps") or "[]")
-        except Exception:
-            row["steps"] = []
-        row["is_builtin"] = bool(row.get("is_builtin"))
-    return rows
-
-
-def workflow_payload(data: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
-    title = str(data.get("title") if data.get("title") is not None else (existing or {}).get("title", "")).strip()
-    prompt = str(data.get("prompt") if data.get("prompt") is not None else (existing or {}).get("prompt", "")).strip()
-    if not title:
-        raise ValueError("title is required")
-    if not prompt:
-        raise ValueError("prompt is required")
-    owner = validate_bridge_target(data.get("owner") if data.get("owner") is not None else (existing or {}).get("owner", "@orchestrator"))
-    accent = str(data.get("accent") if data.get("accent") is not None else (existing or {}).get("accent", "#A78BFA")).strip() or "#A78BFA"
-    desc = str(data.get("description") if data.get("description") is not None else (existing or {}).get("description", ""))[:800]
-    raw_steps = data.get("steps") if data.get("steps") is not None else (existing or {}).get("steps", [])
-    if isinstance(raw_steps, str):
-        steps = [x.strip() for x in raw_steps.split(",") if x.strip()]
-    elif isinstance(raw_steps, list):
-        steps = [str(x).strip() for x in raw_steps if str(x).strip()]
-    else:
-        steps = []
-    return {"title": title, "owner": owner, "accent": accent, "description": desc, "steps": steps[:12], "prompt": prompt}
-
-
-def workflow_create(data: dict[str, Any]) -> dict[str, Any]:
-    init_workflows()
-    item = workflow_payload(data)
-    ts = now_iso()
-    row = {"id": str(uuid.uuid4()), "ts": ts, "updated_at": ts, **item, "steps": json.dumps(item["steps"], ensure_ascii=False), "is_builtin": 0}
-    with workflow_conn() as conn:
-        conn.execute("INSERT INTO workflows (id,ts,updated_at,title,owner,accent,description,steps,prompt,is_builtin) VALUES (:id,:ts,:updated_at,:title,:owner,:accent,:description,:steps,:prompt,:is_builtin)", row)
-    row["steps"] = item["steps"]
-    row["is_builtin"] = False
-    return row
-
-
-def workflow_update(workflow_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    init_workflows()
-    if not workflow_id:
-        raise ValueError("id is required")
-    with workflow_conn() as conn:
-        existing = conn.execute("SELECT * FROM workflows WHERE id=?", (workflow_id,)).fetchone()
-        if not existing:
-            raise KeyError("workflow not found")
-        existing_dict = dict(existing)
-        try:
-            existing_dict["steps"] = json.loads(existing_dict.get("steps") or "[]")
-        except Exception:
-            existing_dict["steps"] = []
-        item = workflow_payload(data, existing_dict)
-        updated = {"id": workflow_id, "updated_at": now_iso(), **item, "steps": json.dumps(item["steps"], ensure_ascii=False)}
-        conn.execute("UPDATE workflows SET updated_at=:updated_at,title=:title,owner=:owner,accent=:accent,description=:description,steps=:steps,prompt=:prompt WHERE id=:id", updated)
-    updated["steps"] = item["steps"]
-    updated["is_builtin"] = bool(existing_dict.get("is_builtin"))
-    updated["ts"] = existing_dict.get("ts")
-    return updated
-
-
-def workflow_delete(workflow_id: str) -> dict[str, Any]:
-    init_workflows()
-    if not workflow_id:
-        raise ValueError("id is required")
-    with workflow_conn() as conn:
-        cur = conn.execute("DELETE FROM workflows WHERE id=?", (workflow_id,))
-        return {"deleted": cur.rowcount, "id": workflow_id}
-
-
-def workflow_runs(limit: int = 50) -> list[dict[str, Any]]:
-    init_workflows()
-    limit = max(1, min(200, int(limit or 50)))
-    with workflow_conn() as conn:
-        return rows_to_dicts(conn.execute("SELECT * FROM workflow_runs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall())
-
-
-def workflow_run_create(data: dict[str, Any]) -> dict[str, Any]:
-    init_workflows()
-    title = str(data.get("workflow_title") or data.get("title") or "Workflow run").strip()[:160]
-    prompt = str(data.get("prompt") or "").strip()
-    if not prompt:
-        raise ValueError("prompt is required")
-    target = validate_bridge_target(data.get("target") or data.get("owner") or "@orchestrator")
-    status = str(data.get("status") or "loaded").strip()[:40] or "loaded"
-    ts = now_iso()
-    row = {
-        "id": str(uuid.uuid4()),
-        "workflow_id": str(data.get("workflow_id") or data.get("id") or "custom")[:120],
-        "workflow_title": title,
-        "target": target,
-        "status": status,
-        "prompt": prompt,
-        "artifact": str(data.get("artifact") or "")[:2000],
-        "created_at": ts,
-        "updated_at": ts,
-    }
-    with workflow_conn() as conn:
-        conn.execute("INSERT INTO workflow_runs (id,workflow_id,workflow_title,target,status,prompt,artifact,created_at,updated_at) VALUES (:id,:workflow_id,:workflow_title,:target,:status,:prompt,:artifact,:created_at,:updated_at)", row)
-    return row
-
-
-def workflow_run_update(run_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    init_workflows()
-    if not run_id:
-        raise ValueError("id is required")
-    allowed = {"status", "artifact"}
-    fields = {k: str(v) for k, v in data.items() if k in allowed}
-    if not fields:
-        raise ValueError("no update fields provided")
-    fields["updated_at"] = now_iso()
-    sets = ", ".join([f"{k}=?" for k in fields])
-    vals = list(fields.values()) + [run_id]
-    with workflow_conn() as conn:
-        cur = conn.execute(f"UPDATE workflow_runs SET {sets} WHERE id=?", vals)
-        if cur.rowcount == 0:
-            raise KeyError("workflow run not found")
-        return dict(conn.execute("SELECT * FROM workflow_runs WHERE id=?", (run_id,)).fetchone())
-
 
 def _timeline_ts(value: Any) -> float:
     if value is None:
@@ -1528,47 +606,6 @@ def flight_recorder_data(limit: int = 80) -> dict[str, Any]:
             "source": "state.db",
         })
 
-    board_section = safe_call("board", lambda: {"tasks": board_list()})
-    for row in (_payload(board_section, {}) or {}).get("tasks", []) or []:
-        events.append({
-            "id": f"task-{row.get('id')}",
-            "ts": row.get("updated_at") or row.get("created_at"),
-            "kind": "task",
-            "agent": "operator",
-            "status": str(row.get("status") or "pending"),
-            "title": _short_text(row.get("title") or "Board task", 120),
-            "detail": _short_text(row.get("notes") or "", 220),
-            "artifact": f"priority: {row.get('priority') or 'medium'}",
-            "source": "board.db",
-        })
-
-    workflow_section = safe_call("workflows", workflow_list)
-    for row in _payload(workflow_section, []) or []:
-        events.append({
-            "id": f"workflow-{row.get('id')}",
-            "ts": row.get("updated_at") or row.get("ts"),
-            "kind": "workflow",
-            "agent": str(row.get("owner") or "workflow").lstrip("@"),
-            "status": "ready",
-            "title": _short_text(row.get("title") or "Workflow", 120),
-            "detail": _short_text(row.get("description") or row.get("prompt") or "", 240),
-            "artifact": ", ".join(row.get("steps") or [])[:220],
-            "source": "workflows.db",
-        })
-
-    for row in workflow_runs(limit):
-        events.append({
-            "id": f"workflow-run-{row.get('id')}",
-            "ts": row.get("updated_at") or row.get("created_at"),
-            "kind": "workflow_run",
-            "agent": str(row.get("target") or "workflow").lstrip("@"),
-            "status": str(row.get("status") or "loaded"),
-            "title": _short_text(row.get("workflow_title") or "Workflow run", 120),
-            "detail": _short_text(row.get("prompt") or "", 220),
-            "artifact": _short_text(row.get("artifact") or "", 220),
-            "source": "workflows.db",
-        })
-
     events.sort(key=lambda e: _timeline_ts(e.get("ts")), reverse=True)
     events = events[:limit]
     by_kind: dict[str, int] = defaultdict(int)
@@ -1639,19 +676,6 @@ def bridge_history(limit: int = 50) -> list[dict[str, Any]]:
     limit = max(1, min(200, int(limit or 50)))
     with bridge_conn() as conn:
         return rows_to_dicts(conn.execute("SELECT id, ts, target, message, response FROM bridge_history ORDER BY ts DESC LIMIT ?", (limit,)).fetchall())
-
-
-def bridge_favorite(data: dict[str, Any]) -> dict[str, Any]:
-    init_bridge()
-    target = validate_bridge_target(data.get("target", "@orchestrator"))
-    message = str(data.get("message", "")).strip()
-    if not message:
-        raise ValueError("message is required")
-    name = str(data.get("name") or message[:48] or "Saved command").strip()
-    item = {"id": str(uuid.uuid4()), "ts": now_iso(), "name": name, "target": target, "message": message}
-    with bridge_conn() as conn:
-        conn.execute("INSERT INTO bridge_favorites (id,ts,name,target,message) VALUES (:id,:ts,:name,:target,:message)", item)
-    return item
 
 
 def save_bridge_history(target: str, message: str, response: str) -> str:
@@ -1862,34 +886,6 @@ def build_user_message_content(message: str, attachments: list[dict[str, Any]] |
     return content
 
 
-def save_uploaded_files(files_or_form: Any) -> list[dict[str, Any]]:
-    ensure_upload_root()
-    attachments: list[dict[str, Any]] = []
-    if isinstance(files_or_form, list):
-        for item in files_or_form[:8]:
-            meta = normalize_attachment_payload(item)
-            if meta:
-                attachments.append(meta)
-        if not attachments:
-            raise ValueError("no files were uploaded")
-        return attachments
-    form = files_or_form
-    raw_items = form["files"] if "files" in form else []
-    if not isinstance(raw_items, list):
-        raw_items = [raw_items] if raw_items is not None else []
-    for item in raw_items[:8]:
-        filename = sanitize_upload_name(getattr(item, "filename", "") or "upload")
-        fileobj = getattr(item, "file", None)
-        if not filename or fileobj is None:
-            continue
-        data = fileobj.read(MAX_UPLOAD_BYTES + 1)
-        mime_type = str(getattr(item, "type", "") or mimetypes.guess_type(filename)[0] or "application/octet-stream")
-        attachments.append(build_attachment_meta(filename, mime_type, data))
-    if not attachments:
-        raise ValueError("no files were uploaded")
-    return attachments
-
-
 def log_bridge(target: str, status: str = "completed") -> None:
     try:
         agency.bridge_run_finished(target, status)
@@ -2091,170 +1087,6 @@ def iter_brain_stream(target: str, message: str, conversation_id: str | None = N
     except Exception as exc:
         yield {"agent": agent, "type": "done", "data": str(exc)}
 
-# ---------- Content library ----------
-
-def validate_content_path(raw_path: str | None) -> Path:
-    if not raw_path:
-        raise ValueError("path is required")
-    candidate = Path(str(raw_path)).expanduser()
-    if not candidate.is_absolute():
-        candidate = CONTENT_ROOT / candidate
-    resolved = candidate.resolve()
-    try:
-        resolved.relative_to(CONTENT_ROOT)
-    except ValueError as exc:
-        raise ValueError("path must stay under /root/.hermes/content/") from exc
-    if resolved.suffix.lower() not in {".md", ".html"}:
-        raise ValueError("only .md and .html files are allowed")
-    return resolved
-
-
-def first_h1(path: Path) -> str:
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                stripped = line.strip()
-                if stripped.startswith("# "):
-                    return stripped[2:].strip() or path.stem
-    except Exception:
-        pass
-    return path.stem.replace("-", " ").replace("_", " ").strip() or path.name
-
-
-def content_list() -> list[dict[str, Any]]:
-    if not CONTENT_ROOT.exists():
-        return []
-    docs = []
-    for path in sorted([*CONTENT_ROOT.rglob("*.md"), *CONTENT_ROOT.rglob("*.html")], key=lambda p: str(p).lower()):
-        if not path.is_file():
-            continue
-        resolved = path.resolve()
-        try:
-            rel = resolved.relative_to(CONTENT_ROOT)
-        except ValueError:
-            continue
-        parts = rel.parts
-        agent = parts[0] if len(parts) > 1 else "root"
-        filename = str(Path(*parts[1:])) if len(parts) > 1 else parts[0]
-        st = resolved.stat()
-        docs.append({
-            "agent": agent,
-            "filename": filename,
-            "title": first_h1(resolved),
-            "modified_at": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
-            "size": st.st_size,
-            "type": resolved.suffix.lower().lstrip("."),
-        })
-    return docs
-
-
-def content_get(raw_path: str | None) -> str:
-    path = validate_content_path(raw_path)
-    if not path.exists() or not path.is_file():
-        raise FileNotFoundError("content file not found")
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def content_save(data: dict[str, Any]) -> dict[str, Any]:
-    path = validate_content_path(data.get("path"))
-    if not path.exists() or not path.is_file():
-        raise FileNotFoundError("content file not found")
-    content = str(data.get("content", ""))
-    path.write_text(content, encoding="utf-8")
-    st = path.stat()
-    return {
-        "ok": True,
-        "path": str(path),
-        "modified_at": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
-        "size": st.st_size,
-    }
-
-
-# ---------- Mission State / Operating Graph ----------
-def mission_state() -> dict[str, Any]:
-    """Build a compact shared mission state from existing durable stores.
-
-    The first version is intentionally derived from current Mission Control data
-    instead of creating a new source of truth: bridge commands are the mission
-    ledger, board rows are operator tasks, workflow runs are execution traces,
-    and recent content files are artifacts.
-    """
-    history = bridge_history(12)
-    tasks = board_list()
-    workflows = workflow_list()
-    runs = workflow_runs(12)
-    docs = content_list()[:8]
-
-    open_tasks = [t for t in tasks if str(t.get("status", "")).lower() != "completed"]
-    active_tasks = [t for t in tasks if str(t.get("status", "")).lower() in {"in_progress", "active", "running"}]
-    latest = history[0] if history else {}
-    latest_target = latest.get("target") or "@orchestrator"
-    latest_message = latest.get("message") or "No mission command captured yet."
-    target_agent = BRIDGE_TARGETS.get(latest_target, {}).get("name", latest_target.lstrip("@").title())
-
-    phases = [
-        {
-            "id": "goal",
-            "label": "Goal",
-            "owner": target_agent,
-            "status": "active" if history else "waiting",
-            "summary": latest_message[:220],
-            "evidence": latest.get("ts"),
-        },
-        {
-            "id": "plan",
-            "label": "Plan",
-            "owner": "Orchestrator",
-            "status": "active" if open_tasks else "waiting",
-            "summary": f"{len(open_tasks)} open board item(s), {len(active_tasks)} in progress.",
-            "evidence": (open_tasks[0].get("title") if open_tasks else "No open board tasks."),
-        },
-        {
-            "id": "build",
-            "label": "Build",
-            "owner": "Forge / Dev / Lumen",
-            "status": "active" if runs or active_tasks else "standby",
-            "summary": f"{len(runs)} recent workflow run(s) and {len(workflows)} saved workflow(s).",
-            "evidence": (runs[0].get("workflow_title") if runs else (active_tasks[0].get("title") if active_tasks else "No active run.")),
-        },
-        {
-            "id": "verify",
-            "label": "Verify",
-            "owner": "Rank / Forge",
-            "status": "ready" if history else "waiting",
-            "summary": "Use API checks, browser console, screenshots, and bridge sends before marking done.",
-            "evidence": "Verification gate enabled in Mission Graph.",
-        },
-        {
-            "id": "ship",
-            "label": "Ship",
-            "owner": "Scribe / Orchestrator",
-            "status": "ready" if docs else "waiting",
-            "summary": f"{len(docs)} recent artifact(s) available in content library.",
-            "evidence": (docs[0].get("title") if docs else "No content artifact indexed."),
-        },
-    ]
-
-    return {
-        "objective": latest_message,
-        "owner": target_agent,
-        "target": latest_target,
-        "updated_at": latest.get("ts") or now_iso(),
-        "phase": next((p["label"] for p in phases if p["status"] == "active"), "Ready"),
-        "open_questions": [
-            "What acceptance evidence is required before this mission is done?",
-            "Which agent owns the next irreversible action?",
-        ],
-        "decisions": [
-            {"label": h.get("target", "@orchestrator"), "summary": h.get("message", "")[:160], "ts": h.get("ts")}
-            for h in history[:6]
-        ],
-        "artifacts": [
-            {"title": d.get("title") or d.get("filename"), "agent": d.get("agent"), "type": d.get("type"), "modified_at": d.get("modified_at")}
-            for d in docs[:6]
-        ],
-        "phases": phases,
-    }
 
 def _payload(section: dict[str, Any], default: Any = None) -> Any:
     if isinstance(section, dict) and section.get("ok"):
@@ -2268,26 +1100,18 @@ def snapshot() -> dict[str, Any]:
     sessions_section = safe_call("sessions", sessions_data)
     vps_section = safe_call("vps_health", vps_health)
     cron_section = safe_call("cron_jobs", cron_jobs)
-    board_section = safe_call("board", lambda: {"tasks": board_list()})
-    mission_graph_section = safe_call("mission_state", mission_state)
-    missions_section = safe_call("missions", mission_summary)
-    mission_memory_section = safe_call("mission_memory", mission_memory_current)
 
     activity = _payload(activity_section, {}) or {}
     sessions = _payload(sessions_section, {}) or {}
     vps = _payload(vps_section, {}) or {}
     gateway = _payload(gateway_section, {}) or {}
     cron = _payload(cron_section, {}) or {}
-    board = _payload(board_section, {}) or {}
-    mission_graph = _payload(mission_graph_section, {}) or {}
-    missions = _payload(missions_section, {}) or {}
 
     ram = vps.get("ram") or {}
     disk = vps.get("disk") or {}
     agents = activity.get("per_agent") or []
     stats = activity.get("totals") or {"total": 0, "completed": 0, "failed": 0}
     totals = sessions.get("token_totals") or {}
-    tasks = board.get("tasks") or []
 
     db_size = 0
     for db_name in ("state.db", "agent-logs.db", "cronjobs.db"):
@@ -2327,14 +1151,8 @@ def snapshot() -> dict[str, Any]:
             "disk_total_gb": round((disk.get("total", 0) or 0) / 1024 / 1024 / 1024, 1),
             "db_size_mb": round(db_size / 1024 / 1024, 2),
         },
-        "kanban": {"total": len([t for t in tasks if t.get("status") != "completed"])},
         "cron_jobs": cron_section,
         "crons": normalized_crons(cron),
-        "board": board_section,
-        "mission": mission_graph,
-        "missions": missions,
-        "mission_state": mission_graph_section,
-        "mission_memory": mission_memory_section,
         "raw": {
             "gateway": gateway_section,
             "activity": activity_section,
@@ -2400,15 +1218,6 @@ class Handler(BaseHTTPRequestHandler):
         if "application/json" in ctype:
             return json.loads(raw.decode("utf-8"))
         return {k: v[0] if len(v)==1 else v for k,v in parse_qs(raw.decode("utf-8")).items()}
-
-    def read_multipart_form(self) -> multipart.MultipartForm:
-        """Parse an upload body.
-
-        Uses the local multipart module rather than `cgi`, which was removed
-        in Python 3.13. MultipartError subclasses ValueError, so the existing
-        handler that turns ValueError into a 400 keeps working unchanged.
-        """
-        return multipart.parse(self.headers, self.rfile)
 
     def send_bridge_stream(self, target: str, message: str, conversation_id: str | None = None, history: Any = None, attachments: list[dict[str, Any]] | None = None) -> None:
         self.send_response(200)
@@ -2509,8 +1318,7 @@ class Handler(BaseHTTPRequestHandler):
         json_paths = {
             "/health", "/status", "/snapshot", "/agents", "/sessions",
             "/api/health", "/api/status", "/api/snapshot", "/api/agents", "/api/sessions",
-            "/api/board", "/api/content", "/api/bridge/history", "/api/workflows", "/api/workflow-runs", "/api/flight-recorder",
-            "/api/mission", "/api/missions", "/api/mission-events", "/api/uploads",
+            "/api/bridge/history", "/api/flight-recorder",
         }
         if parsed.path in html_paths or (not parsed.path.startswith("/api/") and parsed.path not in json_paths and parsed.path != "/events"):
             self.send_head_only(200, "text/html; charset=utf-8")
@@ -2548,7 +1356,6 @@ class Handler(BaseHTTPRequestHandler):
                 "gateway": snap.get("gateway"),
                 "stats": snap.get("stats"),
                 "vps": snap.get("vps"),
-                "kanban": snap.get("kanban"),
             })
             return
         if parsed.path in {"/snapshot", "/api/snapshot"}:
@@ -2570,20 +1377,6 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
             return
-        if parsed.path in {"/api/mission", "/api/missions"}:
-            qs = parse_qs(parsed.query)
-            limit = int((qs.get("limit") or [25])[0])
-            active = mission_summary()
-            payload = {"ok": True, "mission": active.get("active"), "missions": active.get("missions", []), "events": active.get("events", [])}
-            self.send_json(payload)
-            return
-        if parsed.path == "/api/mission-events":
-            qs = parse_qs(parsed.query)
-            limit = int((qs.get("limit") or [40])[0])
-            mission_id = (qs.get("mission_id") or [""])[0] or None
-            events = mission_events(mission_id, limit)
-            self.send_json({"ok": True, "events": [{**e, "summary": e.get("text", ""), "status": e.get("kind", "logged")} for e in events]})
-            return
         # Serve the dashboard shell from / and common browser/SPAs paths.
         # Some users/bookmarks open /index.html; client-side routes should also
         # fall back to the dashboard instead of the stdlib 404 page.
@@ -2598,42 +1391,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             safe_write(self, data)
-            return
-        if parsed.path == "/api/board":
-            self.send_json({"ok": True, "tasks": board_list()})
-            return
-        if parsed.path == "/api/content":
-            try:
-                self.send_json(content_list())
-            except Exception as exc:
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
-            return
-        if parsed.path == "/api/content/get":
-            try:
-                qs = parse_qs(parsed.query)
-                raw_path = (qs.get("path") or [""])[0]
-                ctype = "text/html; charset=utf-8" if str(raw_path).lower().endswith(".html") else "text/markdown; charset=utf-8"
-                self.send_text(content_get(raw_path), content_type=ctype)
-            except Exception as exc:
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
-            return
-        if parsed.path.startswith("/uploads/"):
-            try:
-                rel = parsed.path[len("/uploads/"):].strip("/")
-                candidate = (UPLOAD_ROOT / rel).resolve()
-                candidate.relative_to(UPLOAD_ROOT.resolve())
-                if not candidate.exists() or not candidate.is_file():
-                    raise FileNotFoundError("upload not found")
-                data = candidate.read_bytes()
-                ctype = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                safe_write(self, data)
-            except Exception as exc:
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 404)
             return
         if parsed.path.startswith("/api/uploads/"):
             try:
@@ -2660,20 +1417,6 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
             return
-        if parsed.path == "/api/workflows":
-            try:
-                self.send_json({"ok": True, "workflows": workflow_list()})
-            except Exception as exc:
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
-            return
-        if parsed.path == "/api/workflow-runs":
-            try:
-                qs = parse_qs(parsed.query)
-                limit = int((qs.get("limit") or [50])[0])
-                self.send_json({"ok": True, "runs": workflow_runs(limit)})
-            except Exception as exc:
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
-            return
         if parsed.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -2696,29 +1439,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
         try:
-            if parsed.path == "/api/bridge/upload":
-                form = self.read_multipart_form()
-                self.send_json({"ok": True, "attachments": save_uploaded_files(form)}, 201)
-                return
             data = self.read_body_json()
             if agency.handle_post(self, parsed, qs, data):
-                return
-            if parsed.path == "/api/board":
-                self.send_json({"ok": True, "task": board_create(data)}, 201)
-                return
-            if parsed.path == "/api/board/update":
-                task_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, "task": board_update(task_id, data)})
-                return
-            if parsed.path == "/api/board/delete":
-                task_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, **board_delete(task_id)})
-                return
-            if parsed.path == "/api/content/save":
-                self.send_json(content_save(data))
-                return
-            if parsed.path == "/api/bridge/favorite":
-                self.send_json({"ok": True, "favorite": bridge_favorite(data)}, 201)
                 return
             if parsed.path == "/api/bridge/send":
                 target = validate_bridge_target(data.get("target"))
@@ -2731,38 +1453,6 @@ class Handler(BaseHTTPRequestHandler):
                     conversation_id = str(conversation_id)[:120]
                 history = data.get("history")
                 self.send_bridge_stream(target, message, conversation_id, history, attachments)
-                return
-            if parsed.path in {"/api/mission", "/api/missions"}:
-                self.send_json({"ok": True, "mission": mission_create(data)}, 201)
-                return
-            if parsed.path == "/api/missions/update":
-                mission_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, "mission": mission_update(mission_id, data)})
-                return
-            if parsed.path == "/api/missions/fork":
-                mission_id = (qs.get("id") or [data.get("mission_id", "")])[0]
-                self.send_json({"ok": True, "mission": mission_fork(mission_id, str(data.get("instruction") or ""))}, 201)
-                return
-            if parsed.path in {"/api/missions/event", "/api/mission-events"}:
-                self.send_json({"ok": True, "event": mission_add_event(data)}, 201)
-                return
-            if parsed.path == "/api/workflows":
-                self.send_json({"ok": True, "workflow": workflow_create(data)}, 201)
-                return
-            if parsed.path == "/api/workflows/update":
-                workflow_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, "workflow": workflow_update(workflow_id, data)})
-                return
-            if parsed.path == "/api/workflows/delete":
-                workflow_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, **workflow_delete(workflow_id)})
-                return
-            if parsed.path == "/api/workflow-runs":
-                self.send_json({"ok": True, "run": workflow_run_create(data)}, 201)
-                return
-            if parsed.path == "/api/workflow-runs/update":
-                run_id = (qs.get("id") or [""])[0]
-                self.send_json({"ok": True, "run": workflow_run_update(run_id, data)})
                 return
             self.send_error(404)
         except OSError as exc:
@@ -2866,11 +1556,14 @@ def _warm_provider_sdks() -> None:
 
 def main() -> int:
     ensure_index_html_healthy()
-    init_board()
     init_bridge()
-    init_workflows()
-    init_missions()
-    ensure_uploads_dir()
+    import providers
+    providers.remember_billing()          # an out-of-credit provider stays skipped across restarts
+    try:
+        import autopilot                 # scheduled campaigns and monthly client reports
+        autopilot.start()
+    except Exception as exc:
+        print(f"autopilot did not start: {exc}")
     httpd = RobustThreadingHTTPServer((HOST, PORT), Handler)
     # The provider SDKs take ~2s to import. The first overview needs them (the
     # Models state), so import them now, off the request path, instead of

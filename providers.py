@@ -100,14 +100,63 @@ class ProviderError(Exception):
 # this the dashboard said "Claude answering" while every request was failing
 # over to ChatGPT on a "credit balance too low" 400.
 FAILURE_TTL = 15 * 60
+# An empty balance does not refill itself in fifteen minutes. Remember billing
+# failures for hours, so builds go straight to the next provider instead of
+# re-asking an account with no credit before every stage.
+BILLING_TTL = 6 * 3600
+_BILLING = re.compile(r"credit balance|billing|insufficient[_ ](credit|quota|funds)|quota exceeded|"
+                      r"payment required|\b402\b|requires more credits", re.I)
 _HEALTH: dict[str, dict[str, Any]] = {}
+# Only the server process keeps the file; tests and scripts that import this
+# module must never overwrite what the live dashboard has learned.
+_PERSIST = False
+
+
+def remember_billing() -> None:
+    """Called once by the server: load saved billing failures and keep saving them."""
+    global _PERSIST
+    _PERSIST = True
+    _load_billing()
+
+
+def _health_file():
+    from pathlib import Path
+    return Path(__file__).resolve().parent / "workspace" / "provider_health.json"
+
+
+def _save_billing() -> None:
+    """Billing failures outlive a restart; short-lived ones do not need to."""
+    if not _PERSIST:
+        return
+    keep = {k: v for k, v in _HEALTH.items() if v.get("ttl") == BILLING_TTL}
+    try:
+        f = _health_file(); f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(keep), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _load_billing() -> None:
+    try:
+        saved = json.loads(_health_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    for k, v in saved.items():
+        if isinstance(v, dict) and time.time() - float(v.get("at", 0)) < float(v.get("ttl", 0)):
+            _HEALTH.setdefault(k, v)
 
 
 def record(provider: str, error: Any = None) -> None:
     if error is None:
-        _HEALTH.pop(provider, None)
+        was_billing = _HEALTH.pop(provider, {}).get("ttl") == BILLING_TTL
+        if was_billing:
+            _save_billing()
     else:
-        _HEALTH[provider] = {"error": str(error)[:240], "at": time.time()}
+        text = str(error)[:240]
+        _HEALTH[provider] = {"error": text, "at": time.time(),
+                             "ttl": BILLING_TTL if _BILLING.search(text) else FAILURE_TTL}
+        if _HEALTH[provider]["ttl"] == BILLING_TTL:
+            _save_billing()
 
 
 def api_message(exc: Any) -> str:
@@ -129,7 +178,7 @@ def api_message(exc: Any) -> str:
 def failing(provider: str) -> str:
     """The last error if this provider failed recently and has not answered since."""
     h = _HEALTH.get(provider)
-    if h and time.time() - h["at"] < FAILURE_TTL:
+    if h and time.time() - h["at"] < h.get("ttl", FAILURE_TTL):
         return h["error"]
     return ""
 

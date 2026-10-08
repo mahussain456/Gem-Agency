@@ -173,6 +173,7 @@ export async function projectPage(el, id) {
     const version=slot.querySelector('#previewVersion');
     if(version)version.addEventListener('change',()=>{const src=`/api/agency/artifact/raw?id=${encodeURIComponent(version.value)}`;slot.querySelector('.device-frame iframe').src=src;slot.querySelector('#openPreview').href=src;});
     bindGo(slot);
+    if (slot.querySelector("#apBody")) drawAutopilot(slot.querySelector("#apBody"), id);
   }
   el.querySelectorAll("[data-t]").forEach(b => b.addEventListener("click", () => {
     el.querySelectorAll("[data-t]").forEach(x => {x.classList.toggle("on", x === b);x.setAttribute('aria-selected',String(x===b));});
@@ -230,6 +231,36 @@ export async function projectPage(el, id) {
   bindGo(el);
 }
 
+/* ---------------- autopilot: a scheduled SEO campaign for a live site ---------------- */
+async function drawAutopilot(box, id) {
+  let s;
+  try { s = (await apiGet(`/api/agency/autopilot?project_id=${encodeURIComponent(id)}`)).autopilot; }
+  catch (e) { box.innerHTML = errBox(e); return; }
+  if (!box.isConnected) return;
+  const every = { 7: "Every week", 14: "Every 2 weeks", 30: "Every month" };
+  box.innerHTML = !s.has_url
+    ? `<div class="s">Add the live website address (Edit) to run SEO campaigns on a schedule.</div>`
+    : `<label class="ap-row"><input type="checkbox" id="apOn" ${s.enabled ? "checked" : ""}>
+         <span><b>Run an SEO campaign automatically</b>
+         <span class="s">Audits the live site, then plans fixes, content, AEO/GEO and outreach. Uses model credits each run.</span></span></label>
+       <div class="ap-row2"><select id="apEvery" aria-label="How often">${[7, 14, 30].map(d =>
+         `<option value="${d}" ${s.every_days === d ? "selected" : ""}>${every[d]}</option>`).join("")}</select>
+         <span class="s">${s.enabled
+           ? (s.next_at && new Date(s.next_at) > new Date() ? `Next run ${new Date(s.next_at).toLocaleDateString()}` : "Next run within 10 minutes")
+           : "Off"}${s.last_run_at ? ` · last ${ago(s.last_run_at)}${s.last_note && s.last_note !== "started" ? ` (${esc(s.last_note)})` : ""}` : ""}</span></div>`;
+  const save = async () => {
+    try {
+      await apiPost("/api/agency/autopilot", { project_id: id, enabled: box.querySelector("#apOn").checked,
+        every_days: +box.querySelector("#apEvery").value });
+      toast(box.querySelector("#apOn").checked ? "Autopilot on. Approvals still wait for you." : "Autopilot off.");
+    } catch (e) { toast(String(e.message || e), true); }
+    drawAutopilot(box, id);
+  };
+  const on = box.querySelector("#apOn"), ev = box.querySelector("#apEvery");
+  if (on) on.addEventListener("change", save);
+  if (ev) ev.addEventListener("change", save);
+}
+
 /* ---------------- tabs ---------------- */
 function overviewTab(p, c, run, tasks, approvals, audit) {
   return `<div class="grid">
@@ -247,6 +278,9 @@ function overviewTab(p, c, run, tasks, approvals, audit) {
           <dt>Updated</dt><dd>${ago(p.updated_at)}</dd>
         </dl></div></section>
     <div class="s5">
+      <section class="panel" id="apPanel" style="margin-bottom:var(--gap)">
+        <div class="panel-h"><div><h2>Autopilot</h2><div class="sub">A fresh SEO campaign on a schedule</div></div></div>
+        <div class="panel-b" id="apBody">${skeleton(1)}</div></section>
       <section class="panel" style="margin-bottom:var(--gap)">
         <div class="panel-h"><div><h2>Approvals</h2></div></div>
         <div class="panel-b flush">${approvals.length ? approvals.slice(0, 5).map(a =>

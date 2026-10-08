@@ -40,9 +40,10 @@ function paintNavState() {
   const { key } = currentRoute();
   navEl.querySelectorAll("a").forEach(a => {
     const h = a.dataset.h;
-    a.classList.toggle("on", h === key || (key === "agents" && h === "agency")
+    a.classList.toggle("on", h === key || (["agents", "agency"].includes(key) && h === "office")
+      || (["clients", "client"].includes(key) && h === "projects")
       || (["optimize", "backlinks"].includes(key) && h === "growth")
-      || (key === "project" && h === "projects") || (key === "client" && h === "clients"));
+      || (key === "project" && h === "projects"));
   });
   const title = TITLES[key] || (!ROUTES[key] ? "Not found" : key ? titleCase(key) : "Overview");
   document.getElementById("crumb").innerHTML = `Gem Agency <span style="opacity:.5">/</span> <b>${esc(title)}</b>`;

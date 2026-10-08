@@ -1,4 +1,4 @@
-import {store, apiGet, esc, icon, bindGo, loadAudits, allFindings, skeleton} from '/app/q/js/core.js';
+import {store, apiGet, apiPost, esc, icon, bindGo, loadAudits, allFindings, skeleton} from '/app/q/js/core.js';
 import {isTestProject, relativeChange} from '/app/q/js/workflow.js';
 let savedSite = localStorage.getItem('gem-growth-site') || '', days = 28, statusPromise;
 const cache = new Map();
@@ -36,5 +36,22 @@ export async function opportunities(root,projects){
   root.innerHTML=findings.length?findings.slice(0,3).map((f,i)=>`<button class="opportunity" data-go="project/${esc(f.project.id)}"><span class="number">${i+1}</span><span><b>${esc(f.title)}</b><p>${esc(f.project.name)} · ${esc(f.severity)} priority</p></span></button>`).join(''):'<div class="growth-empty"><h3>Build your growth baseline</h3><p>Run a website audit to turn verified findings into a prioritized improvement plan.</p><button class="btn" data-go="builder/seo_campaign">Start website audit</button></div>';bindGo(root);
 }
 export default async function growth(el){
-  statusPromise=null;el.innerHTML=`<div class="page"><div class="phead"><div><h1>Grow your websites.</h1><p>Your results: what search sent you, what to fix next, and who to earn links from. For keyword, competitor and backlink research, use OpenSEO.</p></div><button class="btn pri" data-go="builder/seo_campaign">Start growth campaign</button></div><div class="growth-tabs"><button class="btn" data-go="optimize">${icon('seo')} Website audits</button><button class="btn" data-go="backlinks">${icon('link')} Link outreach</button><button class="btn" data-go="seo">${icon('search')} Research in OpenSEO ${icon('arrowR')}</button></div><div class="command-bottom"><section class="panel wide-growth"><div class="panel-h"><h2>Search performance</h2></div><div class="panel-b">${growthShell()}</div></section><section class="panel"><div class="panel-h"><h2>Next growth opportunities</h2></div><div class="panel-b" id="growthOpportunities">${skeleton(3)}</div><div class="panel-f"><button class="btn" data-go="optimize">View all findings</button></div></section></div></div>`;bindGo(el);await Promise.allSettled([wireGrowth(el),opportunities(el.querySelector('#growthOpportunities'),(store.overview?.projects||[]).filter(p=>!isTestProject(p)))]);
+  statusPromise=null;el.innerHTML=`<div class="page"><div class="phead"><div><h1>Grow your websites.</h1><p>Your results: what search sent you, what to fix next, and who to earn links from. For keyword, competitor and backlink research, use OpenSEO.</p></div><button class="btn pri" data-go="builder/seo_campaign">Start growth campaign</button></div><div class="growth-tabs"><button class="btn" data-go="optimize">${icon('seo')} Website audits</button><button class="btn" data-go="backlinks">${icon('link')} Link outreach</button><button class="btn" data-go="seo">${icon('search')} Research in OpenSEO ${icon('arrowR')}</button></div><div class="command-bottom"><section class="panel wide-growth"><div class="panel-h"><h2>Search performance</h2></div><div class="panel-b">${growthShell()}</div></section><section class="panel"><div class="panel-h"><h2>Next growth opportunities</h2></div><div class="panel-b" id="growthOpportunities">${skeleton(3)}</div><div class="panel-f"><button class="btn" data-go="optimize">View all findings</button></div></section></div><section class="panel" style="margin-top:var(--gap)"><div class="panel-h"><div><h2>Client reports</h2><div class="sub">Saved as a PDF on the first of each month; generate one any time</div></div></div><div class="panel-b flush" id="growthReports">${skeleton(2)}</div></section></div>`;bindGo(el);reportsPanel(el.querySelector('#growthReports'));await Promise.allSettled([wireGrowth(el),opportunities(el.querySelector('#growthOpportunities'),(store.overview?.projects||[]).filter(p=>!isTestProject(p)))]);
+}
+
+/* client reports: the monthly PDF and the live web version, per client */
+async function reportsPanel(box){
+  let clients=[];
+  try{clients=(await apiGet('/api/agency/reports')).clients||[];}catch(e){box.innerHTML=`<div class="panel-b">${esc(String(e.message||e))}</div>`;return;}
+  if(!box.isConnected)return;
+  if(!clients.length){box.innerHTML='<div class="growth-empty"><p>No clients yet. Reports appear once a client has a website.</p></div>';return;}
+  box.innerHTML=clients.map(c=>{const last=c.reports[0];
+    return `<div class="row"><span class="g"><span class="t">${esc(c.name)}</span><span class="s">${last?`Latest PDF: ${esc(last.period)} · ${c.reports.length} saved`:'No PDF yet'}</span></span>
+      <span class="r" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+      ${last?`<a class="btn sm" href="/api/agency/reports/file?id=${encodeURIComponent(last.id)}" target="_blank" rel="noopener">${icon('doc')} PDF</a>`:''}
+      <a class="btn sm" href="/api/agency/report.html?client_id=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">${icon('ext')} Live</a>
+      <button class="btn sm" data-gen="${esc(c.id)}">${icon('refresh')} Generate now</button></span></div>`;}).join('');
+  box.querySelectorAll('[data-gen]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;b.textContent='Generating…';
+    try{await apiPost('/api/agency/reports/generate',{client_id:b.dataset.gen});}catch(e){b.disabled=false;b.textContent='Try again';return;}
+    reportsPanel(box);}));
 }

@@ -271,3 +271,11 @@ html:not([data-motion="off"]) .os-steps li.now .os-dot{animation:os-pulse 1.4s e
 
 .of-idle[hidden],.of-card[hidden]{display:none}   /* their display:flex/block would beat the hidden attribute */
 @media(max-width:767px){.of-stage{height:auto;min-height:0;aspect-ratio:4/5}.of-tag.free{display:none}.of-idle{font-size:12px;padding:8px 11px;gap:8px}}
+
+/* ---------- autopilot ---------- */
+.ap-row{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.ap-row input{margin-top:3px;accent-color:var(--ac)}
+.ap-row b{display:block;font-size:13px;color:var(--tx)}
+.ap-row .s{display:block;font-size:12px;margin-top:2px}
+.ap-row2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-left:24px}
+.ap-row2 select{background:#151b1e;border:1px solid var(--line-2);border-radius:8px;color:var(--tx);padding:6px 8px;font:inherit;font-size:12.5px}

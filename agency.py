@@ -309,6 +309,25 @@ MIGRATIONS: list[tuple[int, str]] = [
     (5, """
     UPDATE agents SET status = 'retired' WHERE id IN ('antigravity', 'chatgpt');
     """),
+    # Autopilot: scheduled campaigns per site, and monthly client reports as PDFs.
+    (6, """
+    CREATE TABLE IF NOT EXISTS autopilot (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        every_days INTEGER NOT NULL DEFAULT 7,
+        last_run_at TEXT NOT NULL DEFAULT '',
+        last_run_id TEXT NOT NULL DEFAULT '',
+        last_note TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS client_reports (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        period TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (client_id, period)
+    );
+    """),
 ]
 
 BACKLINK_KINDS = {"resource_page", "broken_link", "guest_post", "digital_pr", "partnership", "unlinked_mention", "other"}
@@ -1193,6 +1212,40 @@ def gsc_map_client(client_id: str, site_url: str) -> dict[str, Any]:
     return {"client_id": client_id, "site_url": site_url}
 
 
+def _site_domain(url: str) -> str:
+    """'https://www.Site.com/x', 'sc-domain:site.com' and 'site.com:443' all give 'site.com'."""
+    text = (url or "").strip().lower().removeprefix("sc-domain:")
+    host = re.sub(r"^[a-z]+://", "", text).split("/")[0].split(":")[0]
+    return host.removeprefix("www.")
+
+
+def gsc_auto_map(sites: list[str] | None = None) -> dict[str, Any]:
+    """Map every unmapped client to the Search Console property for one of its
+    websites, by domain. A domain property (sc-domain:) wins over a URL-prefix
+    one. Clients with no matching property are listed, never guessed."""
+    if sites is None:
+        sites = [s.get("site_url", "") for s in gsc.list_sites()]
+    by_domain: dict[str, str] = {}
+    for site in sorted(sites, key=lambda s: not s.startswith("sc-domain:")):
+        by_domain.setdefault(_site_domain(site), site)
+    mapped, unmatched = [], []
+    with _conn() as conn:
+        done = {r["client_id"] for r in conn.execute("SELECT client_id FROM gsc_properties")}
+        clients = _rows(conn.execute("SELECT id, name FROM clients"))
+        urls = _rows(conn.execute("SELECT client_id, url FROM projects WHERE url != '' AND client_id IS NOT NULL"))
+    for c in clients:
+        if c["id"] in done:
+            continue
+        site = next((by_domain[_site_domain(u["url"])] for u in urls
+                     if u["client_id"] == c["id"] and _site_domain(u["url"]) in by_domain), "")
+        if site:
+            gsc_map_client(c["id"], site)
+            mapped.append({"client": c["name"], "site_url": site})
+        else:
+            unmatched.append(c["name"])
+    return {"mapped": mapped, "unmatched": unmatched}
+
+
 def gsc_mappings() -> list[dict[str, Any]]:
     with _conn() as conn:
         return _rows(conn.execute(
@@ -1985,6 +2038,10 @@ def handle_get(handler, parsed) -> bool:
             hostname, _, port = host.partition(":")
             gsc.exchange_code(code, hostname, int(port or "80"))
             _gsc_state_cache["value"] = None
+            try:
+                gsc_auto_map()              # link each client's site to its property right away
+            except Exception:
+                pass                        # mapping can be retried from Integrations; the connection stands
             handler.send_text("<h2>Google Search Console connected.</h2><p>You can close this tab "
                               "and return to Gem Agency.</p>", 200, "text/html; charset=utf-8")
             return True
@@ -2107,6 +2164,25 @@ def handle_get(handler, parsed) -> bool:
                 handler.send_json({"ok": True, "session": _c.get(q.get("id", ""), int(q.get("since", "0")))})
             except KeyError as exc:
                 handler.send_json({"ok": False, "error": str(exc).strip("'")}, 404)
+        elif path == "/api/agency/autopilot":
+            import autopilot as _ap
+            handler.send_json({"ok": True, "autopilot": _ap.settings(q.get("project_id", ""))})
+        elif path == "/api/agency/reports":
+            import autopilot as _ap
+            handler.send_json({"ok": True, "clients": _ap.reports()})
+        elif path == "/api/agency/reports/file":
+            import autopilot as _ap
+            try:
+                data = _ap.report_file(q.get("id", "")).read_bytes()
+            except KeyError as exc:
+                handler.send_json({"ok": False, "error": str(exc).strip("'")}, 404)
+                return True
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/pdf")
+            handler.send_header("Content-Disposition", 'inline; filename="client-report.pdf"')
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
         elif path == "/api/agency/office":
             handler.send_json({"ok": True, **office_state()})
         elif path == "/api/agency/openseo/status":
@@ -2205,6 +2281,11 @@ POST_ROUTES = {
     "/api/agency/browser/capture": lambda q, d: _browser_capture(d),
     "/api/agency/gsc/setup": lambda q, d: _gsc_setup(d),
     "/api/agency/gsc/map": lambda q, d: gsc_map_client(str(d.get("client_id", "")), str(d.get("site_url", ""))),
+    "/api/agency/gsc/automap": lambda q, d: gsc_auto_map(),
+    "/api/agency/autopilot": lambda q, d: {"autopilot": __import__("autopilot").set_autopilot(
+        str(d.get("project_id", "")), d.get("enabled") is True, int(d.get("every_days") or 7))},
+    "/api/agency/reports/generate": lambda q, d: {"report": __import__("autopilot").generate_report(
+        str(d.get("client_id", "")))},
     "/api/agency/gsc/sync": lambda q, d: gsc_sync_client(str(d.get("client_id", ""))),
     "/api/agency/gsc/disconnect": lambda q, d: _gsc_disconnect(),
     "/api/agency/profiles/install": lambda q, d: _profiles_install(d),
