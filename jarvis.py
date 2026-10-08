@@ -20,6 +20,7 @@ Two rules keep it honest:
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 # Pages Jarvis may open. Mirrors the route table in app/q/js/routes.js; a key
@@ -492,6 +493,68 @@ def _quick(system: str, prompt: str) -> dict[str, Any]:
         else:
             text += data
     return {"text": text, "provider": meta.get("provider", ""), "seconds": round(_t.time() - began, 2)}
+
+
+# Speech that needs understanding, not just tidying: a change of mind, a
+# dictated list, or spoken layout. Everything else Whisper already got right.
+_NEEDS_MODEL = re.compile(
+    r"\b(?:no,? wait|no no|wait,? no|i mean|actually|scratch that|delete that|sorry,|or rather|let me rephrase|"
+    r"new (?:line|paragraph)|bullet(?: point)?|first(?:ly)?,? .{0,80}\bsecond(?:ly)?|number one|full stop|"
+    r"comma|question mark)\b", re.I)
+_PUNCT_FILLERS = re.compile(r"(?:(?<=^)|(?<=[\s,.!?]))(?:u+m+|u+h+|e+r+m+|a+h+|h+m+)[,.]?(?=\s|$)\s*", re.I)
+
+
+def strip_fillers(text: str) -> str:
+    """Whisper's punctuated text without the ums: no model, no rewording."""
+    t = " ".join(str(text or "").split())
+    t = re.sub(r",\s*(?:u+m+|u+h+|e+r+m+|a+h+|h+m+)\s*,\s*", " ", t, flags=re.I)   # "should, uh, ship"
+    t = _PUNCT_FILLERS.sub("", t)
+    t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+    t = re.sub(r"(^|[.!?]\s+)[,;]\s*", r"\1", t)        # a comma the filler left behind
+    t = re.sub(r"\s{2,}", " ", t).strip(" ,;")
+    t = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), t)
+    return t
+
+
+def needs_model(text: str) -> bool:
+    return bool(_NEEDS_MODEL.search(text or ""))
+
+
+def dictate(mode: str, pcm: bytes, heard: str = "", selection: str = "", field: str = "") -> dict[str, Any]:
+    """Flow with Whisper: transcribe on this PC, then clean up only if needed.
+
+    Plain dictation is Whisper + filler removal (well under a second, no
+    model call). A correction, a dictated list or an edit goes to the brain
+    as before. If Whisper is unavailable, the browser's words are used."""
+    mode = str(mode or "").lower()
+    if mode not in FLOW_MODES:
+        raise ValueError(f"mode must be one of {', '.join(FLOW_MODES)}")
+    began = time.time()
+    text, ears, note = "", "browser", ""
+    try:
+        import whisper_engine
+        # a sentence, not a bare list: a list of names makes Whisper Title Case everything
+        r = whisper_engine.transcribe(pcm, hint=f"Names that may come up: {_vocab()}.")
+        text, ears = r["text"], "whisper"
+    except Exception as exc:
+        note = f"Whisper unavailable ({str(exc)[:120]}); used the browser's speech recognition."
+    if not text:
+        text = " ".join(str(heard or "").split())
+        if ears == "whisper" and text:
+            ears = "browser"
+    if not text:
+        raise ValueError("nothing was heard")
+    heard_in = round(time.time() - began, 2)
+    if ears == "whisper" and mode != "edit" and not needs_model(text):
+        out = strip_fillers(text) if mode == "dictate" else strip_fillers(text).rstrip(".")
+        if out:
+            return {"text": out, "raw": text, "polished": True, "provider": "local", "ears": ears,
+                    "seconds": round(time.time() - began, 2), "heard_in": heard_in}
+    res = flow(mode, text, selection, field)
+    res.update({"ears": ears, "heard_in": heard_in, "seconds": round(time.time() - began, 2)})
+    if note:
+        res["note"] = (res.get("note", "") + " " + note).strip()
+    return res
 
 
 def flow(mode: str, text: str, selection: str = "", field: str = "") -> dict[str, Any]:

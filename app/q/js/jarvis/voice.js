@@ -203,6 +203,71 @@ export async function micMeter() {
   } catch { return null; }
 }
 
+/* ---------------- raw audio for Whisper ---------------- */
+/** Record the mic as 16 kHz mono for Whisper on this PC, metering as it goes.
+    Returns { level(), bins(n), stop(): Int16Array, close() }, or null if
+    the mic cannot be opened (Flow then uses the browser's recognition only). */
+export async function recordPCM() {
+  if (!navigator.mediaDevices?.getUserMedia) return null;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+    let ctx;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); }
+    catch { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser();
+    an.fftSize = 256; an.smoothingTimeConstant = 0.72;
+    src.connect(an);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    let on = true, closed = false;
+    proc.onaudioprocess = e => { if (on) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+    src.connect(proc); proc.connect(ctx.destination);       // the output buffer stays silent
+    const freq = new Uint8Array(an.frequencyBinCount), time = new Uint8Array(an.fftSize);
+    const close = () => {
+      if (closed) return; closed = true; on = false;
+      try { proc.disconnect(); src.disconnect(); } catch { /* already gone */ }
+      stream.getTracks().forEach(t => t.stop()); ctx.close().catch(() => {});
+    };
+    return {
+      level() {
+        an.getByteTimeDomainData(time);
+        let sum = 0;
+        for (let i = 0; i < time.length; i++) { const v = (time[i] - 128) / 128; sum += v * v; }
+        return Math.min(1, Math.sqrt(sum / time.length) * 3.2);
+      },
+      bins(n) {
+        an.getByteFrequencyData(freq);
+        const out = new Array(n), usable = Math.floor(freq.length * 0.7);
+        for (let i = 0; i < n; i++) out[i] = freq[Math.floor((i / n) * usable)] / 255;
+        return out;
+      },
+      stop() {
+        const rate = ctx.sampleRate;
+        close();
+        let len = 0; for (const c of chunks) len += c.length;
+        const all = new Float32Array(len); let o = 0;
+        for (const c of chunks) { all.set(c, o); o += c.length; }
+        const ratio = rate / 16000, n = Math.floor(all.length / ratio), pcm = new Int16Array(n);
+        for (let i = 0; i < n; i++) {                       // linear resample when the context is not 16 kHz
+          const x = i * ratio, k = Math.floor(x), f = x - k;
+          const v = (all[k] || 0) * (1 - f) + (all[k + 1] || 0) * f;
+          pcm[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+        }
+        return pcm;
+      },
+      close,
+    };
+  } catch { return null; }
+}
+
+export function pcmBase64(pcm) {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 /* ---------------- speaking ---------------- */
 let voices = [];
 function loadVoices() { voices = canSpeak ? speechSynthesis.getVoices() : []; return voices; }

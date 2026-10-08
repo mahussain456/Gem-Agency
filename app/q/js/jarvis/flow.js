@@ -10,10 +10,14 @@
 //                            at the cursor, undoable with Ctrl+Z
 //   selected text in one  -> an edit: "make this shorter", "more formal"
 //   nothing               -> a request to Jarvis, understood in plain language
-// The clean-up is one model call through the brain chain. If no model
-// answers, the words go in as heard and the pill says so.
+// Ears: Whisper on this PC when it is installed (about 0.6 s, punctuated,
+// free, audio never leaves the machine), else the browser's recognition.
+// Plain speech is then only stripped of "um"s, with no model call; a
+// correction, a dictated list or an edit gets one model call through the
+// brain chain. If no model answers, the words go in as heard and the pill
+// says so.
 // ============================================================
-import { apiPost, esc, toast } from "../core.js";
+import { apiGet, apiPost, esc, toast } from "../core.js";
 import { prefs } from "../prefs.js";
 import * as V from "./voice.js";
 
@@ -23,12 +27,14 @@ const CORRECTION = /\b(?:no wait|no no|i mean|actually|scratch that|delete that|
 let deps = {};                // { handle(text, {voice}), micBusy(on) }
 let pill = null, meterTimer = 0, meter = null;
 let cap = null;               // the capture in progress
+let ears = null;              // Whisper on this PC: { installed, ready }
 
 export function initFlow(injected) {
   deps = injected || {};
   document.addEventListener("keydown", onDown, true);
   document.addEventListener("keyup", onUp, true);
   window.addEventListener("blur", () => { if (cap && !cap.handsFree) finish(); });
+  apiGet("/api/agency/voice/whisper").then(s => { ears = s; }).catch(() => { ears = null; });   // also warms the model
 }
 
 const isFlowKey = e => e.code === "Space" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
@@ -94,12 +100,21 @@ function start() {
   } catch (err) { cap = null; deps.micBusy && deps.micBusy(false); show("error", err.message); return; }
   if (prefs.voice.chime) V.chime(true);
   paint("listening");
-  V.micMeter().then(m => { if (cap && !cap.ending) { meter = m; animate(); } else if (m) m.close(); });
+  const c = cap;
+  if (ears && ears.installed) {
+    // record for Whisper; the recorder doubles as the level meter
+    V.recordPCM().then(r => {
+      if (!r) return;
+      if (cap === c && !c.ending) { c.rec = r; meter = r; animate(); } else r.close();
+    });
+  } else {
+    V.micMeter().then(m => { if (cap === c && !c.ending) { meter = m; animate(); } else if (m) m.close(); });
+  }
 }
 
 function stopMeter() {
   cancelAnimationFrame(meterTimer);
-  if (meter) { meter.close(); meter = null; }
+  if (meter) { meter.close(); meter = null; }      // the recorder's close() keeps what it recorded
 }
 
 function cancel(silent = false) {
@@ -115,14 +130,32 @@ async function finish() {
   const c = cap;
   if (!c || c.ending) return;
   c.ending = true;
+  const pcm = c.rec ? c.rec.stop() : null;          // before the meter closes the mic
   stopMeter();
   if (prefs.voice.chime) V.chime(false);
   paint("thinking");
   const heard = ((await c.ctl.stop()) || c.heard || "").trim();
   cap = null;
   deps.micBusy && deps.micBusy(false);
-  if (!heard) { show("error", "I didn't hear anything. Hold Ctrl+Space while you talk."); return; }
+  const audio = pcm && pcm.length > 16000 * 0.3 ? pcm : null;
+  if (!heard && !audio) { show("error", "I didn't hear anything. Hold Ctrl+Space while you talk."); return; }
   try {
+    if (audio) {
+      let res = null;
+      try {
+        res = await apiPost("/api/agency/voice/dictate", {
+          mode: c.mode, audio: V.pcmBase64(audio), heard,
+          selection: c.mode === "edit" ? c.target.selected : "", field: c.target.el ? fieldName(c.target.el) : "",
+        });
+      } catch (err) {
+        if (!heard) throw err;                        // fall through to the browser's words
+      }
+      if (res) {
+        if (c.mode === "command") { hide(); deps.handle && deps.handle(res.text, { voice: true }); }
+        else done(c, res);
+        return;
+      }
+    }
     if (c.mode === "command") await command(heard);
     else await write(c, heard);
   } catch (err) {
@@ -148,11 +181,18 @@ async function write(c, heard) {
   const res = await apiPost("/api/agency/voice/flow", {
     mode: c.mode, text: heard, selection: c.mode === "edit" ? t.selected : "", field: fieldName(t.el),
   });
+  done(c, res);
+}
+
+function done(c, res) {
+  const t = c.target;
   if (!t.el.isConnected) throw new Error("The text box closed before the words were ready. Here they are: " + res.text);
   insert(t, res.text, c.mode === "edit");
-  show(res.polished ? "done" : "warn",
-       res.polished ? (c.mode === "edit" ? "Rewritten" : "Typed") + (res.provider ? ` · cleaned up by ${provName(res.provider)}` : "")
-                    : res.note || "Typed as heard");
+  const verb = c.mode === "edit" ? "Rewritten" : "Typed";
+  const took = res.seconds ? ` in ${Number(res.seconds).toFixed(1)} s` : "";
+  const by = res.provider === "local" ? " · Whisper on this PC"
+    : (res.ears === "whisper" ? " · Whisper + " : " · cleaned up by ") + provName(res.provider || "");
+  show(res.polished ? "done" : "warn", res.polished ? verb + took + by : res.note || "Typed as heard");
 }
 
 const provName = p => ({ claude: "Claude", chatgpt: "ChatGPT", ollama: "the local model" }[p] || p);

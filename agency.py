@@ -2205,6 +2205,9 @@ def handle_get(handler, parsed) -> bool:
             handler.send_header("Content-Length", str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
+        elif path == "/api/agency/voice/whisper":
+            import whisper_engine
+            handler.send_json({"ok": True, **whisper_engine.status()})
         elif path == "/api/agency/office":
             handler.send_json({"ok": True, **office_state()})
         elif path == "/api/agency/openseo/status":
@@ -2280,6 +2283,7 @@ POST_ROUTES = {
     "/api/agency/jev/setup": lambda q, d: _jev_setup(d),
     "/api/agency/jev/disconnect": lambda q, d: _jev_disconnect(d),
     "/api/agency/voice/ask": lambda q, d: _voice_ask(d),
+    "/api/agency/voice/dictate": lambda q, d: _voice_dictate(d),
     "/api/agency/voice/flow": lambda q, d: __import__("jarvis").flow(
         str(d.get("mode", "")), str(d.get("text", "")), str(d.get("selection", "")), str(d.get("field", ""))),
     "/api/agency/models/brain": lambda q, d: _brain_order(d),
@@ -2680,6 +2684,21 @@ def _voice_chat_sse(handler, d: dict) -> None:
                 return
     except Exception as exc:
         send("error", str(exc)[:600])
+
+
+def _voice_dictate(d: dict) -> dict[str, Any]:
+    """Flow with local Whisper: base64 16 kHz int16 PCM in, finished text out."""
+    import base64
+    import jarvis
+    raw = str(d.get("audio", ""))
+    if len(raw) > 6_000_000:
+        raise ValueError("that recording is too long")
+    try:
+        pcm = base64.b64decode(raw, validate=True) if raw else b""
+    except ValueError as exc:
+        raise ValueError("the audio was not valid base64") from exc
+    return jarvis.dictate(str(d.get("mode", "")), pcm, str(d.get("heard", "")),
+                          str(d.get("selection", "")), str(d.get("field", "")))
 
 
 def _voice_ask(d: dict) -> dict[str, Any]:
