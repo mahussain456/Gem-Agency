@@ -328,21 +328,43 @@ MIGRATIONS: list[tuple[int, str]] = [
         UNIQUE (client_id, period)
     );
     """),
+    # The team gets real names. Ids (@scout, ...) stay, so runs and history
+    # keep pointing at the same person; a name the operator changed is kept.
+    (7, """
+    UPDATE agents SET name = 'Daniel Reyes' WHERE id = 'orchestrator' AND name = 'Orchestrator';
+    UPDATE agents SET role = 'Project lead', purpose = 'Project lead' WHERE id = 'orchestrator' AND role = 'Pipeline coordination';
+    UPDATE agents SET name = 'Maya Collins' WHERE id = 'scout' AND name = 'Scout';
+    UPDATE agents SET role = 'Research lead', purpose = 'Research lead' WHERE id = 'scout' AND role = 'Research and discovery';
+    UPDATE agents SET name = 'Priya Nair' WHERE id = 'scribe' AND name = 'Scribe';
+    UPDATE agents SET role = 'Content writer', purpose = 'Content writer' WHERE id = 'scribe' AND role = 'Content and copywriting';
+    UPDATE agents SET name = 'Chloe Bennett' WHERE id = 'reach' AND name = 'Reach';
+    UPDATE agents SET role = 'Outreach manager', purpose = 'Outreach manager' WHERE id = 'reach' AND role = 'Outreach and communication';
+    UPDATE agents SET name = 'Ethan Park' WHERE id = 'dev' AND name = 'Dev';
+    UPDATE agents SET role = 'Developer', purpose = 'Developer' WHERE id = 'dev' AND role = 'Development and integrations';
+    UPDATE agents SET name = 'Sofia Marino' WHERE id = 'lumen' AND name = 'Lumen';
+    UPDATE agents SET role = 'Designer', purpose = 'Designer' WHERE id = 'lumen' AND role = 'Design and UX';
+    UPDATE agents SET name = 'Viktor Novak' WHERE id = 'forge' AND name = 'Forge';
+    UPDATE agents SET role = 'Build engineer', purpose = 'Build engineer' WHERE id = 'forge' AND role = 'Build and tooling';
+    UPDATE agents SET name = 'Omar Haddad' WHERE id = 'rank' AND name = 'Rank';
+    UPDATE agents SET role = 'SEO strategist', purpose = 'SEO strategist' WHERE id = 'rank' AND role = 'SEO analysis and tracking';
+    UPDATE agents SET name = 'Kwame Mensah' WHERE id = 'stitch' AND name = 'Stitch';
+    UPDATE agents SET role = 'UI prototyper', purpose = 'UI prototyper' WHERE id = 'stitch' AND role = 'UI generation and visual prototyping';
+    """),
 ]
 
 BACKLINK_KINDS = {"resource_page", "broken_link", "guest_post", "digital_pr", "partnership", "unlinked_mention", "other"}
 BACKLINK_STATUSES = ["identified", "qualified", "outreach_drafted", "approved", "sent", "responded", "linked", "lost"]
 
 DEFAULT_AGENTS = [
-    ("orchestrator", "Orchestrator", "Pipeline coordination", "@orchestrator"),
-    ("scout", "Scout", "Research and discovery", "@scout"),
-    ("scribe", "Scribe", "Content and copywriting", "@scribe"),
-    ("reach", "Reach", "Outreach and communication", "@reach"),
-    ("dev", "Dev", "Development and integrations", "@dev"),
-    ("lumen", "Lumen", "Design and UX", "@lumen"),
-    ("forge", "Forge", "Build and tooling", "@forge"),
-    ("rank", "Rank", "SEO analysis and tracking", "@rank"),
-    ("stitch", "Stitch", "UI generation and visual prototyping", "@stitch"),
+    ("orchestrator", "Daniel Reyes", "Project lead", "@orchestrator"),
+    ("scout", "Maya Collins", "Research lead", "@scout"),
+    ("scribe", "Priya Nair", "Content writer", "@scribe"),
+    ("reach", "Chloe Bennett", "Outreach manager", "@reach"),
+    ("dev", "Ethan Park", "Developer", "@dev"),
+    ("lumen", "Sofia Marino", "Designer", "@lumen"),
+    ("forge", "Viktor Novak", "Build engineer", "@forge"),
+    ("rank", "Omar Haddad", "SEO strategist", "@rank"),
+    ("stitch", "Kwame Mensah", "UI prototyper", "@stitch"),
 ]
 
 
@@ -793,7 +815,7 @@ def office_state() -> dict[str, Any]:
     for r in recent:
         if _TEST_PROJECT.search(r["project_name"] or ""):
             continue                                   # the dashboard's own test runs are not team news
-        who = next((a["name"] for a in agents if a["id"] == r["agent"]), "Orchestrator")
+        who = next((a["name"] for a in agents if a["id"] == r["agent"]), "An automatic check")
         verb = {"done": "finished", "failed": "hit a problem on", "running": "started",
                 "awaiting_approval": "is waiting on you for"}[r["state"]]
         feed.append({"text": f"{who} {verb}: {r['title']}", "project": r["project_name"] or "",
@@ -2258,6 +2280,8 @@ POST_ROUTES = {
     "/api/agency/jev/setup": lambda q, d: _jev_setup(d),
     "/api/agency/jev/disconnect": lambda q, d: _jev_disconnect(d),
     "/api/agency/voice/ask": lambda q, d: _voice_ask(d),
+    "/api/agency/voice/flow": lambda q, d: __import__("jarvis").flow(
+        str(d.get("mode", "")), str(d.get("text", "")), str(d.get("selection", "")), str(d.get("field", ""))),
     "/api/agency/models/brain": lambda q, d: _brain_order(d),
     "/api/agency/media/key": lambda q, d: (__import__("media").save_key(str(d.get("api_key", ""))),
                                            {"media": __import__("media").status()})[1],

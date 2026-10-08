@@ -20,6 +20,7 @@ import { parseIntent, HELP } from "./intents.js";
 import { prefs, setPref, onPrefs, ACCENTS, motionLevel } from "../prefs.js";
 import * as V from "./voice.js";
 import { createOrb } from "./orb.js";
+import { initFlow } from "./flow.js";
 
 let deps = {};                // injected by boot: attentionItems, renderRoute, setCollapsed, openPrefs, openShortcuts
 let root = null, orb = null, btn = null;
@@ -84,6 +85,19 @@ export function initJarvis(injected) {
     if (path === "voice.wake") syncWake();
   });
   syncWake();
+
+  // Ctrl+Space: talk instead of type, anywhere (flow.js)
+  initFlow({
+    handle,
+    micBusy(on) {                // one microphone: flow borrows it from Jarvis
+      if (on) {
+        if (listening) stopListening(true);
+        if (talk.speaker) talk.speaker.stop();
+        V.stopSpeaking();
+        pauseWake();
+      } else resumeWake();
+    },
+  });
 }
 
 /* ============================================================

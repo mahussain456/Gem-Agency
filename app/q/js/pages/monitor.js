@@ -13,6 +13,7 @@
 import {
   store, apiGet, esc, icon, ago, dur, titleCase, tag, prog, emptyState, errBox,
   skeleton, bindGo, plain, fix, toast,
+  agentName,
 } from "/app/q/js/core.js";
 
 /* A session must have started within this window to count as live work. */
@@ -254,7 +255,7 @@ function paintNow(d) {
     <div class="panel-b flush">
       ${d.nowStages.map(s => `<div class="agrow" data-go="project/${esc(s.run.project_id)}" style="cursor:pointer">
         <span class="agdot working"></span>
-        <span class="agname">${esc(s.agent || s.kind || "system")}</span>
+        <span class="agname">${esc(s.agent ? agentName(s.agent) : s.kind || "system")}</span>
         <span class="g" style="flex:1;min-width:0">
           <span class="t">${esc(plain(s.stage_id, s.title))}</span>
           <span class="s">${esc(s.run.project_name || "untitled")} · stage ${(s.position || 0) + 1} of ${s.run.total}</span>

@@ -89,7 +89,7 @@ class OfficeStateTests(unittest.TestCase):
         self.stage(self.run_("failed", project=test), "scout", "Positioning", "failed", finished=agency.now_iso())
         o, _ = self.office()
         texts = [f["text"] for f in o["feed"]]
-        self.assertIn("Rank finished: Technical fix plan", texts)
+        self.assertIn("Omar Haddad finished: Technical fix plan", texts)
         self.assertFalse(any("Positioning" in t for t in texts))
         self.assertTrue(agency._TEST_PROJECT.search("My test site"))
         self.assertFalse(agency._TEST_PROJECT.search("Contest Co"))   # a word boundary, not a substring

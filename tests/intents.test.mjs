@@ -92,6 +92,8 @@ const CASES = [
   ["jarvis create me a premium landing page for a yoga studio", { type: "build" }],
   ["build a website", { type: "nav", route: "builder" }],
   ["tell scout to research our competitors", { type: "agency", target: "@scout", text: "Research our competitors" }],
+  ["tell Maya to research our competitors", { type: "agency", target: "@scout", text: "Research our competitors" }],
+  ["ask Priya to draft a blog post about roof repair", { type: "agency", target: "@scribe", text: "Draft a blog post about roof repair" }],
   ["ask the agency to write a blog post about roofing", { type: "agency", target: "@orchestrator" }],
   ["ask everyone to report status", { type: "agency", target: "@all" }],
   ["run a full seo audit on globalsync-ai.com", { type: "agency", target: "@orchestrator" }],

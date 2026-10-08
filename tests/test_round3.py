@@ -59,7 +59,7 @@ class Round3Tests(unittest.TestCase):
         agency.bridge_run_finished("@all", "failed")
         runs = agency.runs_list()
         states = {(r["agent_name"], r["state"]) for r in runs}
-        self.assertIn(("Scout", "completed"), states)
+        self.assertIn(("Maya Collins", "completed"), states)
         self.assertIn((None, "failed"), states)
         # closing again is a no-op, not an error
         agency.bridge_run_finished("@scout", "completed")

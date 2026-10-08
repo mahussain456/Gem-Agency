@@ -15,11 +15,13 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 | **Overview** | Every website with a real preview (a built page or a screenshot of the live site), its stage, and the one decision waiting on you. |
 | **Websites** | Each project's pipeline: idea → research → design/content → build and checks → review → launch → growth. Includes a "Mark as live" step that asks for the published address. A live site can go on **Autopilot**: a fresh SEO campaign every week, two weeks or month. Off by default, because each run uses model credits; approvals still wait for you. |
 | **Builder** | Pipeline runs, their stages and their outputs. |
-| **The office** | Your agent team as a live 3D office. Each agent has a desk; they sit and type only while a live pipeline stage (or an Ask-the-agency run) is theirs, raise a hand while a run waits on your approval, and relax in the lounge otherwise. Click a name to see their current task and jump to the project. Runs on real data only, offline (three.js is bundled), pauses when the tab is hidden, and respects reduced motion. |
+| **The office** | Your team as a live 3D office. Everyone has a desk with a name plate; they sit and type (their screen scrolls) only while a live pipeline stage (or an Ask-the-agency run) is theirs, raise a hand while a run waits on your approval, and cheer when a stage finishes. Free time is free: they play table tennis, make coffee, read, water the plants and chat in the lounge, Biscuit the office dog wanders about, and the light and wall clock follow your real time. Tags and cards always say "Free" then, so the decoration never passes for work. Click anyone to see their current task and jump to the project. Offline (three.js is bundled), pauses when the tab is hidden, respects reduced motion. |
 | **OpenSEO** | The open-source SEO suite [every-app/open-seo](https://github.com/every-app/open-seo), running on this PC and shown inside the dashboard: keyword research, rank tracking, backlinks, domain overview, site audits, AI search visibility and Search Console insights. The dashboard installs, starts and stops it; opening the page starts it. Its SEO data comes from DataForSEO, using the same key the dashboard uses. |
 | **Growth (SEO / AEO / GEO)** | Search Console results, the next fixes to make, and link outreach. These stages always run on Claude or ChatGPT, never on the local model. With no data source connected, it says so and invents nothing. **Client reports:** on the first of each month every client with a website gets its report saved as a PDF (printed by your installed Chrome); you can also generate one any time or open the live version. |
 | **Approvals** | Anything that needs your sign-off before the pipeline continues. |
-| **Jarvis** | Voice assistant. Open conversation, like ChatGPT voice. Hands-free mode, interrupt it by speaking, sentence-by-sentence speech. It can navigate and trigger actions from a checked list. |
+| **Jarvis** | Voice assistant. Open conversation, like ChatGPT voice (Ctrl+J). Hands-free mode, interrupt it by speaking, sentence-by-sentence speech. It can navigate and trigger actions from a checked list. |
+| **Flow (talk instead of type)** | Like Wispr Flow: hold **Ctrl+Space** anywhere and talk; pauses don't cut you off. In a text box your words are cleaned up (fillers out, "no wait" corrections applied, team and client names spelled right) and typed at the cursor, undoable with Ctrl+Z. Select text first and say "make this shorter" to rewrite it. Anywhere else it's a request to Jarvis. Tap once for hands-free, Esc cancels. Speech recognition is the browser's own (free); the clean-up is one short call through the brain chain, about 3 s. If no model answers, the words go in as heard and it says so. |
+| **The team** | Daniel Reyes (project lead), Maya Collins (research), Priya Nair (content), Chloe Bennett (outreach), Omar Haddad (SEO), Sofia Marino (design), Kwame Mensah (UI prototypes), Viktor Novak (builds) and Ethan Park (development). Say "tell Maya to…" to hand a job to someone. |
 | **Computer use 2.0** | An AI operates an isolated Chrome on this PC. It works two ways in one task: through the page's structure (read the page, click or type by element number, fetch a URL's raw response for robots.txt, sitemaps, headers and redirects) and through the screen for anything visual. Three brains: Claude and ChatGPT (paid API calls; they read and see), and **Local** on Ollama (free and private; it reads only). Auto tries Claude, then ChatGPT, then Local, handing over only before anything is clicked. ChatGPT's safety checks wait for your approval; password and card fields refuse input. Sessions are saved under `workspace/computer`. |
 | **Image & Video** | 402 image and video models from [Open Generative AI](https://github.com/anil-matcha/open-generative-ai), run through the Muapi API. Supports text-to-X, image-to-X and uploads. |
 | **Typed decisions (Laya)** | [Laya](https://github.com/NandhaKishorM/laya) answers yes/no, pick-one and score questions with calibrated probabilities, free, on this PC (about 0.2 s per decision on CPU once loaded). It speaks the same protocol as TypeSafe's Jev, which stays available as an optional paid cloud engine. The pipeline uses it to triage minor build defects. Install it from Models, Typed decisions. |
@@ -131,7 +133,8 @@ After you connect a provider, the model list comes from the account itself, so m
 3. **Launch:** publish the site yourself, then click **Mark as live** and paste the address.
 4. **Growth:** audits and SEO/AEO/GEO work start on the live site.
 5. **Jarvis:** click the orb or press **Ctrl/Cmd + J**, then talk. Turn on hands-free mode to keep the conversation going.
-6. **Ctrl K** opens the command palette to jump anywhere.
+6. **Flow:** hold **Ctrl + Space** in any text box and talk; let go and it types what you meant.
+7. **Ctrl K** opens the command palette to jump anywhere.
 
 ---
 
@@ -171,7 +174,7 @@ runner.py          Persistent pipeline runner
 autopilot.py       Scheduled SEO campaigns per site and monthly client report PDFs
 playbooks.py       Pipeline definitions (website build, SEO campaign)
 providers.py       Brain chain: Claude → ChatGPT → Ollama, health tracking, streaming
-jarvis.py          Conversational voice endpoint and action vocabulary
+jarvis.py          Conversational voice endpoint, action vocabulary, and Flow's speech clean-up
 laya_engine.py     Installs, starts and stops Laya (local typed decisions); jev.py routes decisions to it first
 computer.py        Computer use 2.0: structure + screen tools; Claude, ChatGPT or Local (Ollama)
 media.py           Muapi client for Image & Video

@@ -422,6 +422,12 @@ export async function loadProfiles({ fresh = false } = {}) {
   return store.profiles;
 }
 
+/** "scout" -> "Maya Collins", from the live team list; unknown ids pass through. */
+export function agentName(id) {
+  const a = (store.overview?.agents || []).find(x => x.id === String(id || "").replace(/^@/, ""));
+  return a ? a.name : String(id || "");
+}
+
 /** Two-letter monogram: "frontend-developer" -> "FD", "Orchestrator" -> "OR". */
 export function initials(name) {
   const parts = fix(name).replace(/[_-]+/g, " ").trim().split(/\s+/).filter(Boolean);

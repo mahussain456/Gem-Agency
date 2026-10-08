@@ -7,6 +7,7 @@
 import {
   store, apiGet, apiPost, esc, icon, ago, dur, plain, emptyState, errBox,
   tag, prog, toast, refresh, bindGo, skeleton,
+  agentName,
 } from "/app/q/js/core.js";
 
 const MODES = [
@@ -141,7 +142,7 @@ export default async function builderPage(el, _id, ctx) {
               <span class="mono s" style="margin:0;width:17px;flex-shrink:0">${i + 1}</span>
               <span style="flex:1;min-width:0;font:400 12.5px/1.4 var(--sans);color:var(--tx-2)">${esc(plain(s.id, s.title))}</span>
               ${s.search ? `<span class="tag t-idle" title="Search work runs only on Claude or ChatGPT">Claude / ChatGPT</span>` : ""}
-              ${tag(s.kind === "gate" ? "you" : s.kind === "tool" ? "check" : (s.agent || "agent"),
+              ${tag(s.kind === "gate" ? "you" : s.kind === "tool" ? "check" : (s.agent ? agentName(s.agent) : "agent"),
                     s.kind === "gate" ? "t-warn" : s.kind === "tool" ? "t-ok" : "t-blue")}
             </div>`).join("")}
           </div>`).join("") || emptyState({ title: "No playbooks registered" })}

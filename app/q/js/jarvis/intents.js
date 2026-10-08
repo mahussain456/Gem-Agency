@@ -14,6 +14,9 @@ import { PAGES } from "../nav.js";
 
 const AGENTS = ["orchestrator", "scout", "scribe", "reach", "dev", "lumen",
                 "forge", "rank", "stitch"];   // Antigravity and ChatGPT retired 2026-10-08
+// the team's first names (2026-10-08); the callsigns above still work
+const FIRST_NAMES = { daniel: "orchestrator", maya: "scout", priya: "scribe", chloe: "reach", ethan: "dev",
+                      sofia: "lumen", viktor: "forge", omar: "rank", kwame: "stitch" };
 
 const ACCENT_WORDS = {
   teal: "teal", green: "teal", mint: "teal", default: "teal",
@@ -191,7 +194,7 @@ export function parseIntent(raw, ctx = {}) {
   {
     const m = s.match(/^(?:ask|tell|have|get|message|send)\s+(?:the\s+)?@?([a-z]+)\s+(?:to\s+)?(.{4,})$/);
     if (m) {
-      const who = m[1];
+      const who = FIRST_NAMES[m[1]] || m[1];
       const target = AGENTS.includes(who) ? "@" + who
         : ["agency", "agents", "team", "fleet", "everyone", "everybody", "all"].includes(who) ? (/^(?:agents|fleet|everyone|everybody|all)$/.test(who) ? "@all" : "@orchestrator")
         : null;
@@ -244,11 +247,12 @@ function capitalise(t) {
 
 /* What Jarvis offers when asked for help. Each line is a real, parsed command. */
 export const HELP = [
+  ["Hold Ctrl+Space and talk", "in any text box it types for you, cleaned up; anywhere else it asks me"],
   ["Status report", "a spoken briefing of the whole agency"],
   ["What needs my attention?", "approvals, deadlines and failures, most urgent first"],
   ["Open approvals", "or any page: websites, growth, clients, models…"],
   ["Build a website for a dentist in Austin", "loads the brief into the builder for you to start"],
-  ["Tell Scout to research our competitors", "hands the job to an agent, ready to send"],
+  ["Tell Maya to research our competitors", "hands the job to an agent, ready to send"],
   ["Search Northgate", "finds clients, projects and keywords"],
   ["Use the computer to check who ranks for roof repair in Denver", "loads a browser task for Claude to run"],
   ["Make an image of a sunlit dental clinic reception", "loads the brief into Image & Video"],

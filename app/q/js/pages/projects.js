@@ -8,6 +8,7 @@ import {
   store, apiGet, apiPost, esc, icon, ago, dur, plain, titleCase, tag, prog, ring,
   emptyState, errBox, skeleton, bindGo, drawer, toast, refresh, modal,
   shapeProject, loadAudits, areaHealth, AREAS, initials,
+  agentName,
 } from "/app/q/js/core.js";
 import { newProject } from "/app/q/js/boot.js";
 import {PHASES, deliveryPhase, recoveryMessage, isTestProject, safeWebsiteUrl} from '/app/q/js/workflow.js';
@@ -138,7 +139,7 @@ export async function projectPage(el, id) {
         <div class="v">${c.pct}<em>%</em></div><div class="c">${c.done} of ${c.total} stages</div></div>
       <div class="kpi" style="--kpi-ink:var(--cyan);cursor:default"><div class="k">${icon("build")}Next action</div>
         <div style="font:500 15px/1.4 var(--sans);margin-top:9px">${esc(c.next)}</div>
-        <div class="c">${c.agent ? "handled by " + esc(c.agent) : c.finished ? "waiting on you" : "no agent assigned"}</div></div>
+        <div class="c">${c.agent ? "handled by " + esc(agentName(c.agent)) : c.finished ? "waiting on you" : "no agent assigned"}</div></div>
       <div class="kpi" style="--kpi-ink:var(--ok);cursor:default"><div class="k">${icon("seo")}Audit score</div>
         <div class="v">${audit ? audit.score : "—"}</div>
         <div class="c">${audit ? `verified ${ago(audit._at)}` : "no audit run"}</div></div>
@@ -316,7 +317,7 @@ function pipelineTab(c, run) {
           ${/* stage_runs.detail already reads "agent · duration · tokens", so printing
                 agent and seconds beside it repeats every line. Prefer the detail. */ ""}
           ${s.detail ? " · " + esc(s.detail)
-            : (s.agent ? " · " + esc(s.agent) : s.kind === "gate" ? " · needs a human" : " · automatic check")
+            : (s.agent ? " · " + esc(agentName(s.agent)) : s.kind === "gate" ? " · needs a human" : " · automatic check")
               + (s.seconds ? " · " + dur(s.seconds) : "")}</div>
         ${s.error ? `<div class="errbox" style="margin:7px 0 0">${esc(s.error)}</div>` : ""}</div></div>`;
     }).join("")}</div></div></section>`;

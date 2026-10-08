@@ -64,6 +64,57 @@ export function listenOnce({ onInterim, lang } = {}) {
   return p;
 }
 
+/* ---------------- hold to talk ---------------- */
+/** Listen for as long as the operator holds the key: pauses to think do not
+    end it. The browser closes a recognition session on its own after a
+    silence or a minute, so a closed session is reopened and the words kept.
+    Returns { stop(): Promise<text>, abort() }; onInterim(text) as they talk. */
+export function listenHold({ onInterim, onError, lang } = {}) {
+  if (!SR) throw new Error("This browser has no speech recognition. Edge or Chrome do.");
+  let done = "", live = "", stopped = false, rec = null, finish = null, fails = 0;
+  const all = () => (done + " " + live).replace(/\s+/g, " ").trim();
+  function open() {
+    rec = new SR();
+    rec.lang = lang || navigator.language || "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.maxAlternatives = 1;
+    rec.onresult = ev => {
+      live = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) done += " " + r[0].transcript; else live += " " + r[0].transcript;
+      }
+      fails = 0;
+      onInterim && onInterim(all());
+    };
+    rec.onerror = ev => {
+      if (ev.error === "no-speech" || ev.error === "aborted") return;
+      if (ev.error === "network" && ++fails < 3) return;          // reopened by onend
+      stopped = true;
+      onError && onError(Object.assign(new Error(reason(ev.error)), { code: ev.error }));
+    };
+    rec.onend = () => {
+      done = all(); live = "";                                     // keep words that never went final
+      if (!stopped) { try { open(); } catch { stopped = true; } return; }
+      if (finish) { finish(done.trim()); finish = null; }
+    };
+    rec.start();
+  }
+  open();
+  return {
+    stop() {
+      return new Promise(resolve => {
+        if (stopped && !finish) { resolve(all()); return; }
+        stopped = true; finish = resolve;
+        try { rec.stop(); } catch { resolve(all()); }
+        setTimeout(() => { if (finish) { finish(all()); finish = null; } }, 1500);   // a stop that never ends
+      });
+    },
+    abort() { stopped = true; finish = null; try { rec.abort(); } catch { /* already closed */ } },
+  };
+}
+
 /* ---------------- wake word ---------------- */
 /** Continuous listening for "Jarvis". Returns a controller with stop().
     Recognition sessions end on their own every so often; this restarts
