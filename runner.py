@@ -281,7 +281,7 @@ def _execute_run(run_id: str) -> None:
                     "kind": stage.get("gate_kind", "proposal"),
                     "blocking": True,
                     "project_id": project["id"],
-                    "source_agent": "pipeline",
+                    "source_agent": stage.get("agent") or "pipeline",   # the person waiting on you
                     "payload": {"run_id": run_id, "stage_id": stage["id"]},
                 })
                 _set_stage(run_id, stage["id"], state="awaiting_approval",

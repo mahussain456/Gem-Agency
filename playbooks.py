@@ -264,7 +264,7 @@ Reply with JSON exactly in this shape:
             "agent": "stitch", "output": "json",
         },
         {
-            "id": "design_pick", "title": "Pick a design", "kind": "gate", "gate_kind": "design",
+            "id": "design_pick", "title": "Pick a design", "kind": "gate", "gate_kind": "design", "agent": "lumen",
             "gate_detail": "Two homepage designs are ready. Pick one to build, or ask Sofia for new designs with your feedback.",
         },
         {

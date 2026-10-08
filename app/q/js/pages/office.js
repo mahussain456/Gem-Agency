@@ -120,6 +120,7 @@ function buildWorld(THREE, stage) {
     { id: "lounge", name: "LOUNGE", x: 18, z: 0, w: 6, d: 12.5, floor: "#263a35", accent: "#64d4bd" },
   ];
   const ROOM = Object.fromEntries(ROOMS.map(r => [r.id, r]));
+  const SIGN_X = 9;                                  // the Gem Agency neon sign, centred on the back wall
   const CORRIDOR_Z = 6, LOUNGE_DOOR = [18.4, CORRIDOR_Z], AISLE_X = 21.4;
   // the known team, each with a desk and a look; anyone new gets a spare desk in the studio
   const LOOK = {
@@ -161,7 +162,7 @@ function buildWorld(THREE, stage) {
   box(24.2, 1.6, 0.12, "#33404a", 12, 0.8, -0.06);
   box(0.12, 1.6, 12.6, "#2e3a43", -0.06, 0.8, 6.25);
   const windowMat = new THREE.MeshStandardMaterial({ color: "#9fd8e6", emissive: "#3f7d8a", emissiveIntensity: 0.9, roughness: 0.2 });
-  for (let x = 1.2; x < 23; x += 2.4) if (Math.abs(x - 18.9) > 0.9) mesh(new THREE.PlaneGeometry(1.5, 0.75), windowMat, x, 0.95, 0.005, scene, false);
+  for (let x = 1.2; x < 23; x += 2.4) if (Math.abs(x - 18.9) > 0.9 && Math.abs(x - SIGN_X) > 3.3) mesh(new THREE.PlaneGeometry(1.5, 0.75), windowMat, x, 0.95, 0.005, scene, false);
   for (let z = 1.3; z < 12; z += 2.6) mesh(new THREE.PlaneGeometry(1.5, 0.75), windowMat, 0.005, 0.95, z, scene, false).rotation.y = Math.PI / 2;
   const glass = new THREE.MeshStandardMaterial({ color: "#cfe8ef", transparent: true, opacity: 0.18, roughness: 0.1, metalness: 0.1 });
   function partition(x1, z1, x2, z2, gap) {
@@ -315,9 +316,123 @@ function buildWorld(THREE, stage) {
   drawClock();
   mesh(new THREE.CircleGeometry(0.2, 32), new THREE.MeshBasicMaterial({ map: clock.t, transparent: true }), 2.4, 1.1, 0.01, scene, false);
 
-  plant(23.5, 0.5, 1.3); plant(18.6, 12, 1.1); plant(0.5, 4.5); plant(9.6, 0.5); plant(17.5, 4.5); plant(0.5, 12); plant(17.5, 12);
+  plant(23.5, 0.5, 1.3); plant(18.6, 12, 1.1); plant(0.5, 4.5); plant(12.9, 0.5); plant(17.5, 4.5); plant(0.5, 12); plant(17.5, 12);
   for (const r of ROOMS) if (r.id !== "lounge") plate(r.name, r.accent, r.x + r.w / 2, r.door === "front" ? r.z + r.d - 0.45 : r.z + 0.45);
   plate("LOUNGE", "#64d4bd", 21, 6);
+
+  /* ---------------- the Gem Agency neon sign ----------------
+     The gem mark and the name as glass tubes on a dark board, with the
+     brand line in warm neon underneath. It powers on letter by letter when
+     the office opens, then hums: a faint breath of light, and very rarely
+     one tube flickers. Its light falls on the floor and desks below. */
+  const neon = (() => {
+    const W = 2048, H = 560, PW = 6.2, PH = PW * H / W;
+    const { c, g, t } = canvasTex(W, H);
+    t.anisotropy = 8;
+    const TEAL = "#5ff2d6", TEAL_CORE = "#eafffa", WARM = "#ffb46b", WARM_CORE = "#fff3e4";
+    // the mark: the four facets of the gem-G, as tube outlines (viewBox 0 0 64 72)
+    const FACETS = ["M32 2 60 18 25 29 5 18Z", "m4 21 20 11v33L1 43Z", "m60 21-3 18H38Z", "M25 43h32v12L30 71 25 65l17-17Z"]
+      .map(d => new Path2D(d));
+    const NAME = "GEM AGENCY", LINE = "BUILD \u00b7 LAUNCH \u00b7 GROW";
+    const nameFont = '800 196px Inter, "Segoe UI", system-ui, sans-serif';
+    const lineFont = '600 64px Inter, "Segoe UI", system-ui, sans-serif';
+    // what lights in what order: the mark, each letter, then the brand line
+    const parts = ["mark", ...[...NAME].map((ch, i) => i).filter(i => NAME[i] !== " "), "line"];
+    const level = Object.fromEntries(parts.map(k => [k, 0]));
+    let layout = null;
+    function measure() {
+      g.font = nameFont;
+      const x0 = 520, xs = [];
+      let x = x0;
+      for (const ch of NAME) { xs.push(x); x += g.measureText(ch).width + 14; }
+      g.font = lineFont;
+      g.letterSpacing = "18px";
+      layout = { xs, x0, lineX: x0 + 6 };
+    }
+    function tube(draw, color, core, on, width) {
+      // off: the bare glass catches a little room light
+      g.save(); g.globalAlpha = 0.22; g.strokeStyle = "#7b8f8c"; g.lineWidth = width; g.shadowBlur = 0; draw(); g.restore();
+      if (on <= 0) return;
+      g.save();
+      g.globalAlpha = on;
+      g.strokeStyle = color; g.shadowColor = color;
+      g.lineWidth = width * 3.2; g.globalAlpha = on * 0.18; g.shadowBlur = 60; draw();
+      g.lineWidth = width * 1.9; g.globalAlpha = on * 0.55; g.shadowBlur = 26; draw();
+      g.lineWidth = width; g.globalAlpha = on; g.shadowBlur = 10; draw();
+      g.strokeStyle = core; g.lineWidth = Math.max(1.5, width * 0.42); g.shadowBlur = 4; draw();
+      g.restore();
+    }
+    function paint() {
+      if (!layout) measure();
+      g.clearRect(0, 0, W, H);
+      g.lineJoin = "round"; g.lineCap = "round";
+      // the mark
+      tube(() => { g.save(); g.translate(120, 74); g.scale(5.4, 5.4); g.lineWidth /= 5.4; FACETS.forEach(f => g.stroke(f)); g.restore(); },
+           TEAL, TEAL_CORE, level.mark, 9);
+      // the name, letter by letter
+      g.font = nameFont; g.textBaseline = "alphabetic";
+      [...NAME].forEach((ch, i) => {
+        if (ch === " ") return;
+        tube(() => g.strokeText(ch, layout.xs[i], 300), TEAL, TEAL_CORE, level[i], 7);
+      });
+      // the brand line
+      g.font = lineFont;
+      g.letterSpacing = "18px";
+      tube(() => g.strokeText(LINE, layout.lineX, 448), WARM, WARM_CORE, level.line, 4.2);
+      g.letterSpacing = "0px";
+      t.needsUpdate = true;
+    }
+    // the board, held off the wall on four standoffs
+    const board = new THREE.Group(); board.position.set(SIGN_X, 1.12, 0.01); scene.add(board);
+    box(PW + 0.18, PH + 0.16, 0.035, mat("#0e1316", { roughness: 0.45, metalness: 0.35 }), 0, 0, 0.03, board);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])
+      mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.05, 10), mat("#9aa6a8", { metalness: 0.8, roughness: 0.3 }),
+        sx * (PW / 2 - 0.04), sy * (PH / 2 - 0.03), 0.055, board, false).rotation.x = Math.PI / 2;
+    const face = mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: t, transparent: true, toneMapped: false, depthWrite: false }),
+      0, 0, 0.052, board, false);
+    face.renderOrder = 2;
+    // light spilling onto the wall around the board, and onto the room
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: TEAL, transparent: true, opacity: 0,
+      depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.set(PW * 1.55, PH * 2.6, 1); halo.position.set(0, -0.02, 0.02); board.add(halo);
+    const light = new THREE.PointLight(TEAL, 0, 7.5, 1.6);
+    light.position.set(SIGN_X, 1.05, 1.1); scene.add(light);
+    let night = 0;
+    const order = parts.map((k, i) => ({ k, at: 0.35 + i * 0.13 + (k === "line" ? 0.25 : 0) }));
+    let t0 = 0, settled = false, nextFlicker = 14 + Math.random() * 20, flick = null;
+    function lit() { return parts.reduce((a, k) => a + level[k], 0) / parts.length; }
+    function tick(time) {
+      if (!t0) t0 = time || 0.0001;
+      const age = time - t0;
+      let dirty = false;
+      if (!settled) {
+        for (const { k, at } of order) {
+          // each tube stutters on: a few quick blinks, then holds
+          const u = age - at;
+          const v = u < 0 ? 0 : u > 0.32 ? 1 : (Math.sin(u * 70) > 0.1 ? 0.85 : 0.08);
+          if (level[k] !== v) { level[k] = v; dirty = true; }
+        }
+        if (age > order[order.length - 1].at + 0.4) { settled = true; parts.forEach(k => level[k] = 1); dirty = true; }
+      } else if (!reduced) {
+        // every so often one letter sputters for a moment, like real glass
+        if (!flick && age > nextFlicker) { flick = { k: parts[1 + Math.floor(Math.random() * (parts.length - 2))], until: age + 0.45 }; }
+        if (flick) {
+          const v = age > flick.until ? 1 : (Math.sin(age * 90) > -0.2 ? 1 : 0.15);
+          if (level[flick.k] !== v) { level[flick.k] = v; dirty = true; }
+          if (age > flick.until) { flick = null; nextFlicker = age + 18 + Math.random() * 30; }
+        }
+      }
+      if (dirty) paint();
+      const breath = reduced ? 1 : 1 + Math.sin(age * 1.7) * 0.03;
+      const on = lit();
+      halo.material.opacity = on * (0.16 + night * 0.16) * breath;
+      light.intensity = on * (2.2 + night * 3.2) * breath;
+    }
+    fontReady.then(() => { layout = null; paint(); });
+    paint();
+    return { tick, setNight(n) { night = n; }, skip() { parts.forEach(k => level[k] = 1); settled = true; paint(); } };
+  })();
+  if (reduced) neon.skip();                         // reduced motion: the sign is simply on
 
   /* ---------------- daylight follows your clock ---------------- */
   const SKY = { day: new THREE.Color("#11161a"), night: new THREE.Color("#0a0d12") };
@@ -330,6 +445,7 @@ function buildWorld(THREE, stage) {
     scene.background.copy(SKY.night).lerp(SKY.day, day);
     windowMat.emissive.set(day > 0.2 ? "#3f7d8a" : "#1f2c55");
     windowMat.emissiveIntensity = 0.35 + 0.6 * day;
+    neon.setNight(1 - day);
     drawClock();
   }
   daylight();
@@ -781,6 +897,7 @@ function buildWorld(THREE, stage) {
     }
     for (const p of plants) p.leaves.rotation.z = Math.sin(anim * 0.8 + p.seed) * 0.03;
     dogTick(reduced ? 0 : move, clockT);
+    neon.tick(clockT);
     renderer.render(scene, camera);
     tags();
   });
