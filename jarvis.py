@@ -29,7 +29,7 @@ ROUTES = {
     "monitor": "Activity", "builder": "Website builder", "approvals": "Approvals",
     "ai": "Ask the agency", "agency": "The Agency", "models": "Models",
     "integrations": "Integrations", "computer": "Computer use", "media": "Image & Video", "optimize": "Website audits",
-    "seo": "OpenSEO", "backlinks": "Link outreach",
+    "seo": "OpenSEO", "backlinks": "Link outreach", "office": "The office",
 }
 
 
@@ -212,8 +212,8 @@ import json as _json
 MAX_ACTIONS = 3
 CHAT_HISTORY = 12
 ACCENTS = ("teal", "violet", "sky", "orchid", "mono")
-AGENT_TARGETS = ("@orchestrator", "@scout", "@scribe", "@reach", "@dev", "@lumen", "@antigravity",
-                 "@chatgpt", "@forge", "@rank", "@stitch", "@all")
+AGENT_TARGETS = ("@orchestrator", "@scout", "@scribe", "@reach", "@dev", "@lumen",
+                 "@forge", "@rank", "@stitch", "@all")
 MEDIA_MODES = ("text-to-image", "image-to-image", "text-to-video", "image-to-video")
 
 CHAT_SYSTEM = """You are Jarvis, the voice assistant built into Gem Agency's dashboard. The \

@@ -26,6 +26,7 @@ const CASES = [
   ["open backlinks", { type: "nav", route: "backlinks" }],
   ["switch to keywords", { type: "nav", route: "seo" }],
   ["open seo", { type: "nav", route: "seo" }],
+  ["show me the office", { type: "nav", route: "office" }],
   ["open the website builder", { type: "nav", route: "builder" }],
   ["open the audits", { type: "nav", route: "optimize" }],
   ["go to the agency", { type: "nav", route: "agency" }],

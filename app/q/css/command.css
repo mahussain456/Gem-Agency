@@ -222,3 +222,52 @@ html:not([data-motion="off"]) .os-steps li.now .os-dot{animation:os-pulse 1.4s e
 .dec-h b{color:var(--tx);font-size:13px}
 .dec-h .r{margin-left:auto}
 .dec-a{display:flex;gap:8px;margin-top:8px}
+
+/* ---------- the office: live 3D view of the agent team ---------- */
+.of-stage{position:relative;height:calc(100vh - 190px);min-height:520px;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#11161a}
+.of-stage canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+.of-msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--tx-2);font-size:13px;padding:24px;text-align:center}
+.of-tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.of-tag{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;text-align:left;background:#f4f7f6;color:#141719;border:0;border-radius:7px;
+  padding:4px 8px 4px 7px;box-shadow:0 6px 18px #0008;white-space:nowrap;font:600 10.5px/1.25 var(--mono);letter-spacing:.02em;will-change:transform}
+.of-tag::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#f4f7f6}
+.of-tag b{display:flex;align-items:center;gap:5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.of-tag i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.of-tag span{display:block;font-weight:500;color:#4b575d;font-size:9.5px;margin-top:1px;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.of-tag.free{opacity:.85}
+.of-tag:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.of-hud{position:absolute;right:16px;bottom:16px;display:flex;background:#f4f7f6;color:#141719;border-radius:12px;padding:11px 4px;box-shadow:0 10px 30px #0008}
+.of-hud div{padding:0 15px}
+.of-hud div+div{border-left:1px solid #d5dcdf}
+.of-hud b{display:block;font:700 24px/1 var(--sans);letter-spacing:-.03em}
+.of-hud span{font:600 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#56646a}
+.of-feed{position:absolute;left:16px;bottom:16px;width:250px;background:#1a1f22e8;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.of-feed h3{font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-3);margin:0 0 5px}
+.of-feed ul{list-style:none;margin:0;padding:0}
+.of-feed li{font-size:12px;color:var(--tx-2);padding:5px 0;border-top:1px solid var(--line)}
+.of-feed li:first-child{border-top:0}
+.of-feed li b{display:block;color:var(--tx);font-weight:600}
+.of-feed li span{font-size:11px;color:var(--tx-3)}
+.of-legend{position:absolute;left:16px;top:16px;display:flex;gap:14px;font:500 11px var(--mono);color:var(--tx-2);background:#1a1f22e8;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.of-legend i{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.of-legend i.w{background:var(--ok)}.of-legend i.f{background:var(--tx-3)}.of-legend i.q{background:var(--warn)}
+.of-idle{position:absolute;left:50%;top:16px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;
+  background:#1a1f22f0;border:1px solid var(--line-2);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--tx-2);max-width:calc(100% - 300px)}
+.of-idle b{color:var(--tx)}
+.of-card{position:absolute;right:16px;top:16px;width:300px;background:#1a1f22f5;border:1px solid var(--line-2);border-radius:12px;padding:14px 15px;
+  box-shadow:0 14px 40px #0009;font-size:13px}
+.of-card p{margin:8px 0 6px;color:var(--tx)}
+.of-card-h{display:flex;align-items:center;gap:8px;padding-right:22px}
+.of-card-h b{font-size:15px}
+.of-card-a{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.of-x{position:absolute;right:9px;top:9px;width:24px;height:24px;display:grid;place-items:center;border-radius:6px;color:var(--tx-3)}
+.of-x:hover{background:var(--raised);color:var(--tx)}
+.of-x svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.of-st{font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:5px}
+.of-st.working{background:#1f3a2c;color:var(--ok)}.of-st.free{background:var(--raised);color:var(--tx-3)}.of-st.waiting{background:#3a3220;color:var(--warn)}
+@media(max-width:900px){.of-feed{display:none}.of-idle{max-width:calc(100% - 32px)}}
+@media(max-width:767px){.of-stage{height:calc(100vh - 200px);min-height:420px}.of-legend{display:none}.of-hud{right:8px;bottom:8px}.of-hud b{font-size:19px}
+  .of-hud div{padding:0 10px}.of-card{left:8px;right:8px;width:auto}.of-tag span{display:none}}
+
+.of-idle[hidden],.of-card[hidden]{display:none}   /* their display:flex/block would beat the hidden attribute */
+@media(max-width:767px){.of-stage{height:auto;min-height:0;aspect-ratio:4/5}.of-tag.free{display:none}.of-idle{font-size:12px;padding:8px 11px;gap:8px}}

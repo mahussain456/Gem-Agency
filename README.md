@@ -15,6 +15,7 @@ It runs on your own machine: a Python server, a SQLite database and a browser da
 | **Overview** | Every website with a real preview (a built page or a screenshot of the live site), its stage, and the one decision waiting on you. |
 | **Websites** | Each project's pipeline: idea → research → design/content → build and checks → review → launch → growth. Includes a "Mark as live" step that asks for the published address. |
 | **Builder** | Pipeline runs, their stages and their outputs. |
+| **The office** | Your agent team as a live 3D office. Each agent has a desk; they sit and type only while a live pipeline stage (or an Ask-the-agency run) is theirs, raise a hand while a run waits on your approval, and relax in the lounge otherwise. Click a name to see their current task and jump to the project. Runs on real data only, offline (three.js is bundled), pauses when the tab is hidden, and respects reduced motion. |
 | **OpenSEO** | The open-source SEO suite [every-app/open-seo](https://github.com/every-app/open-seo), running on this PC and shown inside the dashboard: keyword research, rank tracking, backlinks, domain overview, site audits, AI search visibility and Search Console insights. The dashboard installs, starts and stops it; opening the page starts it. Its SEO data comes from DataForSEO, using the same key the dashboard uses. |
 | **Growth (SEO / AEO / GEO)** | Audits, findings, keywords and backlinks. These stages always run on Claude or ChatGPT, never on the local model. With no data source connected, it says so and invents nothing. |
 | **Approvals** | Anything that needs your sign-off before the pipeline continues. |
@@ -197,6 +198,7 @@ DESIGN.md          Design system (graphite + teal "Growth Command Center")
 
 ## Credits
 
+- 3D office: [three.js](https://threejs.org) 0.170.0, MIT licence, bundled in `app/q/vendor/` with its licence.
 - Typed decisions: [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya), Apache-2.0, release 0.4.0, models from Hugging Face (convaiinnovations).
 - SEO suite: [every-app/open-seo](https://github.com/every-app/open-seo), MIT licence, installed at a pinned commit.
 - Image & Video model catalogue: [anil-matcha/open-generative-ai](https://github.com/anil-matcha/open-generative-ai), MIT licence. The full licence is in `data/media_models.LICENSE`.

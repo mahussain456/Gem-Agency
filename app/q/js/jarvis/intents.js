@@ -13,7 +13,7 @@
 import { PAGES } from "../nav.js";
 
 const AGENTS = ["orchestrator", "scout", "scribe", "reach", "dev", "lumen",
-                "antigravity", "chatgpt", "forge", "rank", "stitch"];
+                "forge", "rank", "stitch"];   // Antigravity and ChatGPT retired 2026-10-08
 
 const ACCENT_WORDS = {
   teal: "teal", green: "teal", mint: "teal", default: "teal",

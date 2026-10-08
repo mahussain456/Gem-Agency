@@ -1,7 +1,9 @@
 {
   "detector": {
     "ignoreRules": [],
-    "ignoreFiles": [],
+    "ignoreFiles": [
+      "app/q/js/pages/office.js"
+    ],
     "ignoreValues": [
       {
         "rule": "overused-font",

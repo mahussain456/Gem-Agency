@@ -31,7 +31,7 @@ DEFAULT_TIMEOUT = 300
 # operator talks to by hand.
 AGENTS = {
     "orchestrator", "scout", "scribe", "reach", "dev",
-    "lumen", "antigravity", "chatgpt", "forge", "rank",
+    "lumen", "forge", "rank",
 }
 
 

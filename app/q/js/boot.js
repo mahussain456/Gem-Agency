@@ -6,7 +6,7 @@ import {
   approvalStats, daysUntil, modal, apiPost, closeDrawer, drawer, ago,
 } from "/app/q/js/core.js";
 import { openPalette } from "/app/q/js/palette.js";
-import { ROUTES, monitorTeardown, computerTeardown, mediaTeardown, openseoTeardown } from "/app/q/js/routes.js";
+import { ROUTES, monitorTeardown, computerTeardown, mediaTeardown, openseoTeardown, officeTeardown } from "/app/q/js/routes.js";
 import { recoveryMessage } from '/app/q/js/workflow.js';
 import { NAV, TITLES } from "/app/q/js/nav.js";
 import "/app/q/js/prefs.js";
@@ -63,6 +63,7 @@ async function renderRoute({ quiet = false } = {}) {
   if (currentKey === "computer") computerTeardown();     // stop polling the old session
   if (currentKey === "media") mediaTeardown();
   if (currentKey === "seo") openseoTeardown();
+  if (currentKey === "office") officeTeardown();   // frees the GPU and stops polling
   // Dismiss anything floating above the workspace. A modal or drawer left over
   // from the previous route would sit on top of the new page still bound to the
   // old record, and submitting it would write against the wrong context.

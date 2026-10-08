@@ -9,7 +9,7 @@ import {
 } from "/app/q/js/core.js";
 
 const TARGETS = ["@orchestrator", "@scout", "@scribe", "@reach", "@dev", "@lumen",
-                 "@antigravity", "@chatgpt", "@forge", "@rank", "@stitch", "@all"];
+                 "@forge", "@rank", "@stitch", "@all"];
 
 const LIBRARY = [
   { g: "Build", items: [

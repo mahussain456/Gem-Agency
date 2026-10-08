@@ -127,6 +127,7 @@ const P = {
   menu: "M3 12h18M3 6h18M3 18h18",
   panel: "M3 3h18v18H3zM15 3v18",
   cursor: "M4 3l6.5 17 2.4-7.1L20 10.5zM13 13l6 6",
+  office: "M4 21V5l8-3 8 3v16M2 21h20M9 21v-4h6v4M8 8h2M14 8h2M8 12h2M14 12h2",
   image: "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM21 15l-5-5L5 21",
 };
 export function icon(name, cls = "") {

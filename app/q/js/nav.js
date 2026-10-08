@@ -27,6 +27,8 @@ export const NAV = [
       say: ["clients", "customers", "accounts", "client list"] },
     { h: "monitor", ic: "bolt", t: "Activity", s: "What is being worked on right now", key: "a", badge: "working",
       say: ["activity", "monitor", "live activity", "what's running", "running work", "feed"] },
+    { h: "office", ic: "office", t: "The office", s: "Your agents at work, live", key: "f",
+      say: ["the office", "office", "virtual office", "team floor", "who is working", "show me the team"] },
   ]},
   { group: "Agency tools", items: [
     { h: "builder", ic: "build", t: "Website builder", s: "Turn an idea into a site", key: "b",

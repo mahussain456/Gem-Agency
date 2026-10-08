@@ -80,8 +80,6 @@ BRIDGE_TARGETS = {
     "@reach": {"agent": "reach", "name": "Reach", "code": "RECH"},
     "@dev": {"agent": "dev", "name": "Dev", "code": "DEV"},
     "@lumen": {"agent": "lumen", "name": "Lumen", "code": "LMN"},
-    "@antigravity": {"agent": "antigravity", "name": "Antigravity", "code": "ANTI"},
-    "@chatgpt": {"agent": "chatgpt", "name": "ChatGPT", "code": "GPT"},
     "@forge": {"agent": "forge", "name": "Forge", "code": "FRG"},
     # Rank uses the main Hermes gateway. A previous dedicated Rank gateway on
     # localhost:8651 is optional and often not running; hardcoding it made
@@ -1953,8 +1951,6 @@ def local_status_text(target: str) -> str:
         "@reach": "marketing and outreach",
         "@dev": "development and integrations",
         "@lumen": "UI/UX and visual polish",
-        "@antigravity": "strategy and edge-case checks",
-        "@chatgpt": "general reasoning",
         "@forge": "build and hardening",
         "@rank": "ranking, SEO, and prioritization",
         "@stitch": "UI generation, visual prototyping, and Stitch design-to-build handoff",

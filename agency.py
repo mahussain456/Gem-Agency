@@ -303,6 +303,12 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_artifacts_run ON artifacts(run_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);
     """),
+    # 2026-10-08: Antigravity and ChatGPT retired. In four months neither ran a
+    # stage, raised an approval or logged activity; ChatGPT is a model (the
+    # brain's second engine), not a team member. Rows stay for their history.
+    (5, """
+    UPDATE agents SET status = 'retired' WHERE id IN ('antigravity', 'chatgpt');
+    """),
 ]
 
 BACKLINK_KINDS = {"resource_page", "broken_link", "guest_post", "digital_pr", "partnership", "unlinked_mention", "other"}
@@ -315,8 +321,6 @@ DEFAULT_AGENTS = [
     ("reach", "Reach", "Outreach and communication", "@reach"),
     ("dev", "Dev", "Development and integrations", "@dev"),
     ("lumen", "Lumen", "Design and UX", "@lumen"),
-    ("antigravity", "Antigravity", "Experimental automation", "@antigravity"),
-    ("chatgpt", "ChatGPT", "External LLM relay", "@chatgpt"),
     ("forge", "Forge", "Build and tooling", "@forge"),
     ("rank", "Rank", "SEO analysis and tracking", "@rank"),
     ("stitch", "Stitch", "UI generation and visual prototyping", "@stitch"),
@@ -686,9 +690,13 @@ def approval_decide(approval_id: str, decision: str, decided_by: str = "operator
     return row
 
 
-def agents_list() -> list[dict[str, Any]]:
+def agents_list(include_retired: bool = False) -> list[dict[str, Any]]:
+    """The team. Retired agents keep their row (and history) but are not listed."""
     with _conn() as conn:
         rows = _rows(conn.execute("SELECT * FROM agents ORDER BY name"))
+    if not include_retired:
+        rows = [r for r in rows if r.get("status") != "retired"]
+    with _conn() as conn:
         runs = _rows(conn.execute(
             "SELECT agent_id, state, summary, started_at FROM agent_runs "
             "WHERE finished_at='' ORDER BY started_at DESC"))
@@ -702,6 +710,77 @@ def agents_list() -> list[dict[str, Any]]:
             row["status"] = run["state"]
             row["current_run"] = run
     return rows
+
+
+LIVE_RUN_STATES = ("queued", "running", "awaiting_approval")
+_TEST_PROJECT = re.compile(r"(^zz[\s_-]|\btest\b|\bselftest\b|\be2e\b)", re.I)   # as the Builder page hides them
+
+
+def office_state() -> dict[str, Any]:
+    """Who is working on what, for the office view. Live records only.
+
+    An agent is 'working' while a stage of a live pipeline run names it (or an
+    agent run from Ask the agency is open), 'waiting' while a run is paused on
+    an approval its stage raised (or an approval it raised is pending), and
+    'free' otherwise. A stage left 'running' inside a run that ended is stale
+    and ignored. Automated stages (audits, checks) are shown at the
+    Orchestrator's desk, since it runs them.
+    """
+    agents = agents_list()
+    ids = {a["id"] for a in agents}
+    live = ",".join("?" * len(LIVE_RUN_STATES))
+    with _conn() as conn:
+        stages = _rows(conn.execute(
+            f"SELECT s.agent, s.title, s.state, s.started_at, r.id AS run_id, r.playbook, "
+            f"p.id AS project_id, p.name AS project_name "
+            f"FROM stage_runs s JOIN pipeline_runs r ON r.id = s.run_id "
+            f"LEFT JOIN projects p ON p.id = r.project_id "
+            f"WHERE s.state IN ('running', 'awaiting_approval') AND r.state IN ({live}) "
+            f"ORDER BY s.started_at", LIVE_RUN_STATES))
+        pending = _rows(conn.execute(
+            "SELECT a.source_agent, a.title, a.project_id, p.name AS project_name FROM approvals a "
+            "LEFT JOIN projects p ON p.id = a.project_id WHERE a.status = 'pending' ORDER BY a.created_at"))
+        recent = _rows(conn.execute(
+            "SELECT s.agent, s.title, s.state, s.started_at, s.finished_at, p.name AS project_name "
+            "FROM stage_runs s JOIN pipeline_runs r ON r.id = s.run_id LEFT JOIN projects p ON p.id = r.project_id "
+            "WHERE s.started_at != '' AND (s.state IN ('done', 'failed') "
+            f"OR (s.state IN ('running', 'awaiting_approval') AND r.state IN ({live}))) "
+            "ORDER BY COALESCE(NULLIF(s.finished_at, ''), s.started_at) DESC LIMIT 20", LIVE_RUN_STATES))
+    owner = lambda agent: agent if agent in ids else "orchestrator"
+    state: dict[str, dict[str, Any]] = {}
+    for s in stages:
+        who = owner(s["agent"] or "")
+        waiting = s["state"] == "awaiting_approval"
+        task = s["title"] if who == s["agent"] else f"Running: {s['title']}"
+        cur = state.get(who)
+        if waiting or not cur or cur["state"] != "waiting":
+            state[who] = {"state": "waiting" if waiting else "working", "task": task,
+                          "project": s["project_name"] or "", "project_id": s["project_id"] or "",
+                          "since": s["started_at"]}
+    for p in pending:
+        who = owner(p["source_agent"] or "")
+        state[who] = {"state": "waiting", "task": p["title"], "project": p["project_name"] or "",
+                      "project_id": p["project_id"] or "", "since": ""}
+    for a in agents:
+        run = a.get("current_run")
+        if run and a["id"] not in state:
+            state[a["id"]] = {"state": "working", "task": run.get("summary") or "Working on a request",
+                              "project": "", "project_id": "", "since": run.get("started_at", "")}
+    out = []
+    for a in agents:
+        s = state.get(a["id"], {"state": "free", "task": "", "project": "", "project_id": "", "since": ""})
+        out.append({"id": a["id"], "name": a["name"], "role": a.get("role") or "", **s})
+    feed = []
+    for r in recent:
+        if _TEST_PROJECT.search(r["project_name"] or ""):
+            continue                                   # the dashboard's own test runs are not team news
+        who = next((a["name"] for a in agents if a["id"] == r["agent"]), "Orchestrator")
+        verb = {"done": "finished", "failed": "hit a problem on", "running": "started",
+                "awaiting_approval": "is waiting on you for"}[r["state"]]
+        feed.append({"text": f"{who} {verb}: {r['title']}", "project": r["project_name"] or "",
+                     "at": r["finished_at"] or r["started_at"]})
+    return {"agents": out, "feed": feed[:6],
+            "counts": {k: sum(1 for a in out if a["state"] == k) for k in ("working", "waiting", "free")}}
 
 
 def keywords_list(client_id: str = "") -> list[dict[str, Any]]:
@@ -2028,6 +2107,8 @@ def handle_get(handler, parsed) -> bool:
                 handler.send_json({"ok": True, "session": _c.get(q.get("id", ""), int(q.get("since", "0")))})
             except KeyError as exc:
                 handler.send_json({"ok": False, "error": str(exc).strip("'")}, 404)
+        elif path == "/api/agency/office":
+            handler.send_json({"ok": True, **office_state()})
         elif path == "/api/agency/openseo/status":
             import openseo as _o
             handler.send_json({"ok": True, "openseo": _o.status()})

@@ -10,6 +10,7 @@ import agentsPage from "/app/q/js/pages/agents.js";
 import monitor, { monitorTeardown } from "/app/q/js/pages/monitor.js";
 import computer, { computerTeardown } from "/app/q/js/pages/computer.js";
 import media, { mediaTeardown } from "/app/q/js/pages/media.js";
+import office, { officeTeardown } from "/app/q/js/pages/office.js";
 import openseo, { openseoTeardown } from "/app/q/js/pages/openseo.js";
 import approvals from "/app/q/js/pages/approvals.js";
 import ai from "/app/q/js/pages/ai.js";
@@ -29,7 +30,7 @@ function missing(el) {
   bindGo(el);
 }
 
-export { monitorTeardown, computerTeardown, mediaTeardown, openseoTeardown };
+export { monitorTeardown, computerTeardown, mediaTeardown, openseoTeardown, officeTeardown };
 
 export const ROUTES = {
   "": deck,
@@ -50,6 +51,7 @@ export const ROUTES = {
   models,
   computer,
   media,
+  office,
   seo: openseo,
   integrations,
   _missing: missing,
