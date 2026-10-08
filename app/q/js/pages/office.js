@@ -11,6 +11,7 @@
 // three.js (MIT) is bundled in /app/q/vendor and loads only on this page.
 // ============================================================
 import { apiGet, esc, icon, bindGo, ago } from "/app/q/js/core.js";
+import { openTeamChat } from "/app/q/js/team.js";
 
 let world = null;
 
@@ -573,11 +574,13 @@ function buildWorld(THREE, stage) {
       ${a.task ? `<p>${esc(a.task)}${a.project ? ` <span class="s">· ${esc(a.project)}</span>` : ""}</p>`
         : `<p class="s">Not on a task. ${esc(a.slot ? a.slot.line : "In the lounge")} until the next stage needs them.</p>`}
       ${a.since && a.state !== "free" ? `<div class="s">Since ${ago(a.since)}</div>` : ""}
-      <div class="of-card-a">${a.project_id ? `<button class="btn sm pri" data-go="project/${esc(a.project_id)}">${icon("arrowR")} Open the project</button>` : ""}
+      <div class="of-card-a"><button class="btn sm pri" data-chat>${icon("send")} Message ${esc(a.first)}</button>
+        ${a.project_id ? `<button class="btn sm" data-go="project/${esc(a.project_id)}">${icon("arrowR")} Open the project</button>` : ""}
         ${a.state === "waiting" ? `<button class="btn sm" data-go="approvals">${icon("approve")} Approvals</button>` : ""}
         <button class="btn sm" data-go="monitor">${icon("bolt")} Activity</button></div>`;
     card.hidden = false;
     card.querySelector(".of-x").addEventListener("click", () => { card.hidden = true; openCard = null; });
+    card.querySelector("[data-chat]").addEventListener("click", ev => { ev.stopPropagation(); openTeamChat(a.id, a.project_id || ""); });
     bindGo(card);
   }
   const initialsOf = n => String(n || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();

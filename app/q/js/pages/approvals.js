@@ -73,7 +73,10 @@ export default async function approvals(el) {
         ${a.status !== "pending" ? `<div class="s" style="margin-top:11px">
           ${titleCase(a.status)} by ${esc(a.decided_by || "operator")} ${ago(a.decided_at)}</div>` : ""}
       </div>
-      ${a.status === "pending" ? `<div class="panel-f" style="display:flex;gap:8px;flex-wrap:wrap">
+      ${a.status === "pending" && a.kind === "design" ? `<div class="panel-f" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn pri" data-go="project/${esc(a.project_id)}">${icon("eye")} See both designs and pick one</button>
+        <button class="btn dang" data-decide="rejected" data-id="${esc(a.id)}">${icon("x")} Stop this build</button>
+      </div>` : a.status === "pending" ? `<div class="panel-f" style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ok" data-decide="approved" data-id="${esc(a.id)}">${icon("check")} Approve</button>
         <button class="btn dang" data-decide="rejected" data-id="${esc(a.id)}">${icon("x")} Reject</button>
         <button class="btn" data-back="${esc(a.id)}">${icon("ai")} Send back to the agent</button>

@@ -11,6 +11,7 @@ import {
   store, apiGet, apiPost, esc, icon, ago, dur, titleCase, tag, emptyState, errBox, skeleton,
   bindGo, toast, modal, plain, monoAv, loadProfiles,
 } from "/app/q/js/core.js";
+import { openTeamChat } from "/app/q/js/team.js";
 
 const STATE_TAG = { running: "t-blue", planning: "t-blue", waiting: "t-warn", needs_approval: "t-warn",
                     failed: "t-crit", error: "t-crit", completed: "t-ok", idle: "t-idle" };
@@ -114,6 +115,9 @@ export default async function agency(el, id) {
 
     const copy = ev.target.closest("[data-copy]");
     if (copy) { copyPrompt(copy); return; }
+
+    const chat = ev.target.closest("[data-chat]");
+    if (chat) { openTeamChat(chat.dataset.chat, chat.dataset.chatProject || ""); return; }
 
     const cmd = ev.target.closest("[data-cmd]");
     if (cmd) { location.hash = "ai/?to=" + encodeURIComponent(cmd.dataset.cmd); }
@@ -299,7 +303,8 @@ function runtimeView(a) {
           <span style="font-size:11.5px;color:var(--tx-3)">${ago(r.started_at)}${r.error ? " · " + esc(String(r.error).slice(0, 70)) : ""}</span></span></div>`).join("")
       : `<div class="prov">No runs recorded for this agent yet.</div>`}
     <div style="display:flex;gap:6px;margin-top:18px">
-      <button class="btn pri" style="flex:1;justify-content:center" data-cmd="${esc(a.gateway_target || "@" + a.id)}">${icon("send")} Send a command</button>
+      <button class="btn pri" style="flex:1;justify-content:center" data-chat="${esc(a.id)}" data-chat-project="${esc(a.work?.run?.project_id || "")}">${icon("send")} Message ${esc(String(a.name).split(/\s+/)[0])}</button>
+      <button class="btn" data-cmd="${esc(a.gateway_target || "@" + a.id)}" title="Send a one-off command">${icon("ai")}</button>
       <button class="btn" data-go="monitor">${icon("bolt")}</button>
     </div>`;
 }

@@ -34,7 +34,7 @@ APP_DIR = PROJECT_DIR / "app"
 TOKEN_PATH = PROJECT_DIR / ".agency_token"
 
 PROVENANCE = {"estimated", "imported", "verified"}
-APPROVAL_KINDS = {"copy", "deploy", "outreach", "proposal", "other"}
+APPROVAL_KINDS = {"copy", "deploy", "outreach", "proposal", "other", "design"}
 AGENT_STATES = {"idle", "planning", "running", "waiting", "needs_approval", "blocked", "failed", "completed"}
 PROJECT_TYPES = {
     "marketing_website", "landing_page", "saas_app", "ecommerce", "mobile_app",
@@ -349,6 +349,19 @@ MIGRATIONS: list[tuple[int, str]] = [
     UPDATE agents SET role = 'SEO strategist', purpose = 'SEO strategist' WHERE id = 'rank' AND role = 'SEO analysis and tracking';
     UPDATE agents SET name = 'Kwame Mensah' WHERE id = 'stitch' AND name = 'Stitch';
     UPDATE agents SET role = 'UI prototyper', purpose = 'UI prototyper' WHERE id = 'stitch' AND role = 'UI generation and visual prototyping';
+    """),
+    # Talking to the team: one thread per person per project, kept.
+    (8, """
+    CREATE TABLE IF NOT EXISTS agent_messages (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        project_id TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        action TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS agent_messages_thread ON agent_messages (agent_id, project_id, created_at);
     """),
 ]
 
@@ -684,10 +697,14 @@ def approval_create(data: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def approval_decide(approval_id: str, decision: str, decided_by: str = "operator") -> dict[str, Any]:
+def approval_decide(approval_id: str, decision: str, decided_by: str = "operator",
+                    design_picked: bool = False) -> dict[str, Any]:
     if decision not in {"approved", "rejected"}:
         raise ValueError("decision must be 'approved' or 'rejected'")
     with _conn() as conn:
+        kind = conn.execute("SELECT kind FROM approvals WHERE id=?", (approval_id,)).fetchone()
+        if kind and kind["kind"] == "design" and decision == "approved" and not design_picked:
+            raise ValueError("pick design A or B on the project page; approving alone would build without a design")
         cur = conn.execute(
             "UPDATE approvals SET status=?, decided_at=?, decided_by=? WHERE id=? AND status='pending'",
             (decision, now_iso(), decided_by, approval_id))
@@ -729,6 +746,183 @@ def approval_decide(approval_id: str, decision: str, decided_by: str = "operator
                 conn.execute("UPDATE pipeline_runs SET state='stopped', error='gate rejected by operator', "
                              "updated_at=? WHERE id=?", (now_iso(), run_id))
     return row
+
+
+# ---------------------------------------------------------------- talking to the team
+
+CHAT_HISTORY = 14
+
+AGENT_SYSTEM = """You are {name}, {role} at Gem Agency, a small web design and SEO agency. You are talking with
+the agency's owner (the operator) in the dashboard's chat. Speak as yourself, a capable senior colleague: warm,
+direct, specific, first person, a few sentences unless asked for more. Plain text, no markdown headings.
+
+What you know is below. Use it; if something is not there, say so and say how you would find out. Never invent
+numbers, rankings, traffic, client facts or results. You cannot send emails, publish, spend money or approve
+anything yourself.
+
+How the dashboard works (point the operator to these): a stopped run has a "Resume saved step" button on
+its project page and continues from where it stopped; when Claude has no credit, work goes to ChatGPT
+automatically; approvals and the design pick are on the project page.
+
+{context}
+
+YOUR STEPS in this project's pipeline (the work you own): {steps}
+
+Redoing your work: if the operator asks you to change, redo or improve something you made, agree on what you
+will change, then end your reply with ONE extra line exactly like
+ACTION: {{"do": "redo", "stage": "<a step id from YOUR STEPS>", "feedback": "<what to change, in the operator's terms, specific>"}}
+The operator confirms with a button before anything runs, so say you will start when they confirm; never say it
+is already done. Redoing a step also reruns the steps after it, and uses model credits. Only propose it when they
+asked for a change. No ACTION line otherwise."""
+
+
+def _agent_steps(agent_id: str, run: dict | None) -> list[dict[str, str]]:
+    if not run:
+        return []
+    import playbooks
+    try:
+        pb = playbooks.get(run["playbook"])
+    except Exception:
+        return []
+    have = {r["stage_id"] for r in run.get("stages", [])}
+    return [{"id": st["id"], "title": st["title"]} for st in pb["stages"]
+            if st.get("agent") == agent_id and st["id"] in have]
+
+
+def _chat_context(agent_id: str, project_id: str) -> tuple[str, dict | None]:
+    """What this person knows about the project: the brief, where the run is, and their own work."""
+    if not project_id:
+        return "No project is selected; talk about your craft and how you work with the agency.", None
+    import runner
+    with _conn() as conn:
+        p = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+        r = conn.execute("SELECT id FROM pipeline_runs WHERE project_id=? ORDER BY created_at DESC LIMIT 1",
+                         (project_id,)).fetchone()
+    if not p:
+        raise KeyError("project not found")
+    run = runner.get_run(r["id"]) if r else None
+    lines = [f"PROJECT: {p['name']}", f"Brief: {(p['brief'] or '')[:1200]}",
+             f"Live address: {p['url'] or 'not launched'}"]
+    if run:
+        lines.append(f"Pipeline run: {run['playbook']} is {run['state']}"
+                     + (f" ({run['error'][:200]})" if run.get("error") else ""))
+        lines.append("Steps: " + "; ".join(f"{s['title']} [{s['state']}]" for s in run["stages"]))
+        with _conn() as conn:
+            arts = conn.execute(
+                "SELECT stage_id, title, kind, content FROM artifacts WHERE run_id=? ORDER BY created_at DESC, rowid DESC",
+                (run["id"],)).fetchall()
+        mine = {st["id"] for st in _agent_steps(agent_id, run)}
+        seen = set()
+        for a in arts:
+            if a["stage_id"] in seen or a["stage_id"] not in mine | {"positioning", "copy", "design_pick"}:
+                continue
+            seen.add(a["stage_id"])
+            limit = 2500 if a["stage_id"] in mine else 700
+            content = a["content"] if a["kind"] != "html" else "(an HTML page, " + str(len(a["content"])) + " characters)"
+            lines.append(f"--- {a['title']} ({'your work' if a['stage_id'] in mine else 'context'}):\n{content[:limit]}")
+        if agent_id in ("lumen", "stitch"):
+            d = runner.design_state(project_id)
+            if d.get("options"):
+                lines.append("CURRENT DESIGN SAMPLES (round %s): " % d.get("round") + "; ".join(
+                    f"{o['key'].upper()} = {o.get('name')}: {o.get('idea', '')[:160]}" for o in d["options"])
+                    + (f". The client picked {d['chosen'].upper()}." if d.get("chosen") else
+                       ". The client has not picked one yet." if d.get("pending") else ""))
+    return "\n".join(lines), run
+
+
+def agent_thread(agent_id: str, project_id: str = "") -> dict[str, Any]:
+    agent = next((a for a in agents_list() if a["id"] == agent_id), None)
+    if not agent:
+        raise KeyError("no such team member")
+    run = None
+    if project_id:
+        with _conn() as conn:
+            r = conn.execute("SELECT id FROM pipeline_runs WHERE project_id=? ORDER BY created_at DESC LIMIT 1",
+                             (project_id,)).fetchone()
+        if r:
+            import runner
+            run = runner.get_run(r["id"])
+    with _conn() as conn:
+        msgs = _rows(conn.execute(
+            "SELECT * FROM agent_messages WHERE agent_id=? AND project_id=? ORDER BY created_at, rowid",
+            (agent_id, project_id or "")))
+    for m in msgs:
+        m["action"] = json.loads(m["action"]) if m.get("action") else None
+    return {"agent": {k: agent.get(k) for k in ("id", "name", "role")}, "project_id": project_id,
+            "steps": _agent_steps(agent_id, run), "run_id": run["id"] if run else "",
+            "run_state": run["state"] if run else "", "messages": msgs[-60:]}
+
+
+def _save_message(agent_id: str, project_id: str, role: str, text: str, action: dict | None = None) -> dict:
+    row = {"id": str(uuid.uuid4()), "agent_id": agent_id, "project_id": project_id or "", "role": role,
+           "text": text, "action": json.dumps(action) if action else "", "created_at": now_iso()}
+    with _conn() as conn:
+        conn.execute("INSERT INTO agent_messages (id, agent_id, project_id, role, text, action, created_at) "
+                     "VALUES (:id,:agent_id,:project_id,:role,:text,:action,:created_at)", row)
+    return {**row, "action": action}
+
+
+def agent_chat(agent_id: str, project_id: str, text: str) -> dict[str, Any]:
+    """One turn with a team member, in character, grounded in the project."""
+    import providers
+    text = " ".join(str(text or "").split())
+    if not text:
+        raise ValueError("write a message first")
+    if len(text) > 4000:
+        raise ValueError("that message is too long")
+    thread = agent_thread(agent_id, project_id)
+    agent = thread["agent"]
+    context, run = _chat_context(agent_id, project_id)
+    steps = thread["steps"]
+    system = AGENT_SYSTEM.format(name=agent["name"], role=agent["role"] or "team member", context=context,
+                                 steps=", ".join(f"{s['id']} ({s['title']})" for s in steps) or "none in this project")
+    convo = [f"{'Operator' if m['role'] == 'user' else agent['name']}: {m['text']}" for m in thread["messages"][-CHAT_HISTORY:]]
+    prompt = ("CONVERSATION SO FAR:\n" + "\n".join(convo) + "\n\n" if convo else "") + \
+        f"Operator: {text}\n{agent['name']}:"
+    _save_message(agent_id, project_id, "user", text)
+    res = providers.complete(prompt, provider=providers.policy_for(text, agent_id), agent=agent_id,
+                             system=system, timeout=120, fallback=True)
+    reply = str(res.get("text", "")).strip()
+    action = None
+    m = re.search(r"^\s*ACTION:\s*(\{.*\})\s*$", reply, re.M | re.S)
+    if m:
+        reply = reply[:m.start()].rstrip()
+        try:
+            raw = json.loads(m.group(1))
+        except ValueError:
+            raw = {}
+        stage = str(raw.get("stage", ""))
+        if raw.get("do") == "redo" and run and stage in {s["id"] for s in steps}:
+            import playbooks
+            ids = [st["id"] for st in playbooks.get(run["playbook"])["stages"]]
+            later = [st for st in run["stages"] if st["stage_id"] in ids[ids.index(stage):]]
+            action = {"do": "redo", "run_id": run["id"], "stage": stage,
+                      "stage_title": next(s["title"] for s in steps if s["id"] == stage),
+                      "feedback": " ".join(str(raw.get("feedback", "")).split())[:1500] or text,
+                      "steps": len(later), "state": "proposed"}
+    reply = reply or "Sorry, I lost my train of thought there. Could you say that again?"
+    msg = _save_message(agent_id, project_id, "agent", reply, action)
+    return {"message": msg, "provider": res.get("provider", ""), "seconds": res.get("seconds", 0)}
+
+
+def agent_confirm(message_id: str) -> dict[str, Any]:
+    """The operator pressed the button on a proposed redo: run it, and note it in the thread."""
+    import runner
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM agent_messages WHERE id=?", (message_id,)).fetchone()
+    if not row or not row["action"]:
+        raise KeyError("nothing to confirm")
+    action = json.loads(row["action"])
+    if action.get("state") != "proposed":
+        raise ValueError("this was already handled")
+    out = runner.redo_from(action["run_id"], action["stage"], action.get("feedback", ""), by=row["agent_id"])
+    action["state"] = "started"
+    with _conn() as conn:
+        conn.execute("UPDATE agent_messages SET action=? WHERE id=?", (json.dumps(action), message_id))
+    agent = next((a for a in agents_list() if a["id"] == row["agent_id"]), {"name": row["agent_id"]})
+    note = _save_message(row["agent_id"], row["project_id"], "event",
+                         f"{agent['name']} started: {action['stage_title']} ({len(out['redo'])} steps will run again).")
+    return {"run": out, "event": note}
 
 
 def agents_list(include_retired: bool = False) -> list[dict[str, Any]]:
@@ -2205,6 +2399,26 @@ def handle_get(handler, parsed) -> bool:
             handler.send_header("Content-Length", str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
+        elif path == "/api/agency/agents/chat":
+            handler.send_json({"ok": True, **agent_thread(q.get("agent", ""), q.get("project_id", ""))})
+        elif path == "/api/agency/design":
+            import runner as _r
+            handler.send_json({"ok": True, **_r.design_state(q.get("project_id", ""))})
+        elif path == "/api/agency/design/file":
+            import runner as _r
+            try:
+                data = _r.design_file(q.get("project_id", ""), q.get("name", "")).read_bytes()
+            except KeyError as exc:
+                handler.send_json({"ok": False, "error": str(exc).strip("'")}, 404)
+                return True
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/html; charset=utf-8")
+            # a generated page: no scripts of ours, no access to the dashboard
+            handler.send_header("Content-Security-Policy", "sandbox allow-scripts; default-src 'self' 'unsafe-inline' data: "
+                                "https://fonts.googleapis.com https://fonts.gstatic.com")
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
         elif path == "/api/agency/voice/whisper":
             import whisper_engine
             handler.send_json({"ok": True, **whisper_engine.status()})
@@ -2251,6 +2465,11 @@ POST_ROUTES = {
     "/api/agency/tasks/delete": lambda q, d: agency_task_delete(q.get("id", "")),
     "/api/agency/approvals": lambda q, d: {"approval": approval_create(d)},
     "/api/agency/approvals/decide": lambda q, d: {"approval": approval_decide(q.get("id", ""), str(d.get("decision", "")))},
+    "/api/agency/agents/chat": lambda q, d: agent_chat(str(d.get("agent", "")), str(d.get("project_id", "")), str(d.get("text", ""))),
+    "/api/agency/agents/confirm": lambda q, d: agent_confirm(str(d.get("message_id", ""))),
+    "/api/agency/design/pick": lambda q, d: __import__("runner").pick_design(str(d.get("approval_id", "")), str(d.get("choice", ""))),
+    "/api/agency/runs/redo": lambda q, d: __import__("runner").redo_from(
+        str(d.get("run_id", "")), str(d.get("stage", "")), str(d.get("feedback", ""))),
     "/api/agency/keywords": lambda q, d: {"keyword": keyword_create(d)},
     "/api/agency/keywords/update": lambda q, d: {"keyword": keyword_update(q.get("id", ""), d)},
     "/api/agency/keywords/delete": lambda q, d: keyword_delete(q.get("id", "")),

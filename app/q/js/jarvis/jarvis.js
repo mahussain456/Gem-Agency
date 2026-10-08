@@ -20,7 +20,7 @@ import { parseIntent, HELP } from "./intents.js";
 import { prefs, setPref, onPrefs, ACCENTS, motionLevel } from "../prefs.js";
 import * as V from "./voice.js";
 import { createOrb } from "./orb.js";
-import { initFlow } from "./flow.js";
+import { initFlow, hasWhisper } from "./flow.js";
 
 let deps = {};                // injected by boot: attentionItems, renderRoute, setCollapsed, openPrefs, openShortcuts
 let root = null, orb = null, btn = null;
@@ -270,6 +270,7 @@ async function listen({ barge = false } = {}) {
     return;
   }
   clearTimeout(dockTimer);
+  if (!barge && hasWhisper()) return listenWhisper();
   if (!barge) setState("listening");
   heard("", true);
   if (prefs.voice.chime && !barge) V.chime(true);
@@ -328,6 +329,68 @@ async function listen({ barge = false } = {}) {
     show({ say: "", text: err.message, error: true,
            cards: err.code === "not-allowed" ? [{ t: "Allow the microphone", s: "Click the lock or camera icon in the address bar, allow the microphone for this site, then try again." }] : null });
   }
+}
+
+/* Listening with Whisper on this PC. The browser's recogniser only shows the
+   words as you speak (it is not needed, and it is what said "I didn't catch
+   that" when its service heard nothing); the microphone level decides when
+   you have finished: speech, then a 1.1 s pause. Whisper writes it down. */
+const VAD = { on: 0.1, quiet: 1100, wait: 8000, max: 30000 };
+async function listenWhisper() {
+  setState("listening");
+  heard("", true);
+  if (prefs.voice.chime) V.chime(true);
+  let interim = "", ended = false, timer = 0, ctl = null;
+  const rec = await V.recordPCM();
+  if (!rec) {
+    setState("error");
+    show({ say: "", text: "I couldn't open the microphone. Allow it from the address bar, or type below.", error: true });
+    return;
+  }
+  meter = rec; orb.setSource(rec);
+  try { ctl = V.listenHold({ onInterim: t => { interim = t; heard(t, true); } }); } catch { ctl = null; }
+  const began = performance.now();
+  let spoke = 0, lastVoice = 0;
+  const finish = async (keep = true) => {
+    if (ended) return;
+    ended = true; clearInterval(timer);
+    const pcm = rec.stop();
+    ctl && ctl.abort();
+    if (listening === me) listening = null;
+    endListening(keep);
+    if (!keep) { setState("idle"); return; }
+    if (!spoke) { nothingHeard(); return; }
+    setState("thinking");
+    let text = "";
+    try {
+      text = (await apiPost("/api/agency/voice/dictate", { mode: "command", audio: V.pcmBase64(pcm), heard: interim })).text || "";
+    } catch (e) {
+      text = interim;                                   // Whisper failed: the browser's words, if it had any
+      if (!text) { setState("error"); show({ say: "", text: `I couldn't make that out: ${e.message || e}`, error: true }); return; }
+    }
+    if (!text.trim()) { nothingHeard(); return; }
+    talk.silent = 0;
+    handle(text, { voice: true });
+  };
+  const me = { stop: () => finish(true), abort: () => finish(false) };
+  listening = me;
+  timer = setInterval(() => {
+    const now = performance.now(), lv = rec.level();
+    if (lv > VAD.on) { if (!spoke) spoke = now; lastVoice = now; }
+    if ((spoke && now - lastVoice > VAD.quiet) || (!spoke && now - began > VAD.wait) || now - began > VAD.max) finish(true);
+  }, 50);
+}
+
+function nothingHeard() {
+  if (talk.on) {
+    talk.silent++;
+    if (talk.silent < 2 && mode !== "closed") { listen(); return; }
+    pauseTalk();
+    return;
+  }
+  setState("idle");
+  show({ say: "", text: "I didn't hear anything. Press Ctrl J and talk, or type below." });
+  if (mode === "dock") scheduleDockHide();
 }
 
 /* Stop Jarvis mid-sentence and listen: the button, the orb and Ctrl J all do this. */

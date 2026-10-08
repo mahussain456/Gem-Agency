@@ -10,6 +10,7 @@ import {
   shapeProject, loadAudits, areaHealth, AREAS, initials,
   agentName,
 } from "/app/q/js/core.js";
+import { openTeamChat, face } from "/app/q/js/team.js";
 import { newProject } from "/app/q/js/boot.js";
 import {PHASES, deliveryPhase, recoveryMessage, isTestProject, safeWebsiteUrl} from '/app/q/js/workflow.js';
 
@@ -139,7 +140,8 @@ export async function projectPage(el, id) {
         <div class="v">${c.pct}<em>%</em></div><div class="c">${c.done} of ${c.total} stages</div></div>
       <div class="kpi" style="--kpi-ink:var(--cyan);cursor:default"><div class="k">${icon("build")}Next action</div>
         <div style="font:500 15px/1.4 var(--sans);margin-top:9px">${esc(c.next)}</div>
-        <div class="c">${c.agent ? "handled by " + esc(agentName(c.agent)) : c.finished ? "waiting on you" : "no agent assigned"}</div></div>
+        <div class="c">${approvals.some(a => a.status === "pending") ? "waiting on you"
+          : c.agent ? "handled by " + esc(agentName(c.agent)) : c.finished ? "waiting on you" : "no agent assigned"}</div></div>
       <div class="kpi" style="--kpi-ink:var(--ok);cursor:default"><div class="k">${icon("seo")}Audit score</div>
         <div class="v">${audit ? audit.score : "—"}</div>
         <div class="c">${audit ? `verified ${ago(audit._at)}` : "no audit run"}</div></div>
@@ -175,12 +177,15 @@ export async function projectPage(el, id) {
     if(version)version.addEventListener('change',()=>{const src=`/api/agency/artifact/raw?id=${encodeURIComponent(version.value)}`;slot.querySelector('.device-frame iframe').src=src;slot.querySelector('#openPreview').href=src;});
     bindGo(slot);
     if (slot.querySelector("#apBody")) drawAutopilot(slot.querySelector("#apBody"), id);
+    if (slot.querySelector("#dpPanel")) drawDesigns(slot.querySelector("#dpPanel"), id);
+    slot.querySelectorAll("[data-chat]").forEach(b => b.addEventListener("click", () => openTeamChat(b.dataset.chat, id)));
   }
   el.querySelectorAll("[data-t]").forEach(b => b.addEventListener("click", () => {
     el.querySelectorAll("[data-t]").forEach(x => {x.classList.toggle("on", x === b);x.setAttribute('aria-selected',String(x===b));});
     show(b.dataset.t);
   }));
-  const defaultTab=artifacts.some(a=>a.kind==='html')?'preview':'overview';
+  const designWaiting=approvals.some(a=>a.status==='pending'&&a.kind==='design');
+  const defaultTab=!designWaiting&&artifacts.some(a=>a.kind==='html')?'preview':'overview';
   el.querySelectorAll('[data-t]').forEach(x=>{x.classList.toggle('on',x.dataset.t===defaultTab);x.setAttribute('aria-selected',String(x.dataset.t===defaultTab));});
   el.querySelector('#pTabs').setAttribute('role','tablist');
   el.querySelector('#pTabs').addEventListener('keydown',e=>{
@@ -230,6 +235,106 @@ export async function projectPage(el, id) {
     catch (e) { rb.disabled = false; toast(String(e.message || e), true); }
   });
   bindGo(el);
+  const again = ev => { if (ev.detail?.project_id === id && document.body.contains(el)) projectPage(el, id); };
+  window.addEventListener("gem:project-changed", again, { once: true });
+}
+
+/* ---------------- the team on this project ---------------- */
+function teamRows(run) {
+  const people = new Map();
+  for (const s of run.stages || []) {
+    if (!s.agent || s.kind === "tool" && !["stitch"].includes(s.agent) || s.kind === "gate") continue;
+    const who = (store.overview?.agents || []).find(a => a.id === s.agent);
+    if (!who) continue;
+    const row = people.get(who.id) || { who, steps: [] };
+    row.steps.push(s);
+    people.set(who.id, row);
+  }
+  if (!people.size) return emptyState({ ic: "users", title: "No one has worked on this yet" });
+  return [...people.values()].map(({ who, steps }) => {
+    const now = steps.find(s => s.state === "running");
+    const done = steps.filter(s => s.state === "done");
+    const line = now ? `Working on ${now.title}` : done.length === steps.length ? `Done: ${done.map(s => s.title).join(", ")}`
+      : done.length ? `Done ${done.length} of ${steps.length}: next ${steps.find(s => s.state !== "done").title}` : `Up next: ${steps[0].title}`;
+    return `<div class="row team-row">${face(who.id, who.name)}<span class="g"><span class="t">${esc(who.name)}</span>
+      <span class="s">${esc(who.role || "")} · ${esc(line)}</span></span>
+      <button class="btn sm" data-chat="${esc(who.id)}">${icon("send")} Message</button></div>`;
+  }).join("");
+}
+
+/* ---------------- pick a design: Sofia's two directions, built by Kwame ---------------- */
+async function drawDesigns(box, id) {
+  let d;
+  try { d = await apiGet(`/api/agency/design?project_id=${encodeURIComponent(id)}`); }
+  catch (e) { return; }
+  if (!box.isConnected) return;
+  const opts = d.options || [];
+  if (d.working) {
+    box.hidden = false;
+    box.innerHTML = `<div class="panel-h"><div><h2>New designs on the way</h2>
+        <div class="sub">Sofia is drafting two directions, then Kwame builds each one as a real homepage. This takes a few minutes.</div></div></div>
+      <div class="panel-b dpick-grid">${[0, 1].map(() => `<div class="dopt"><div class="dframe dframe-wait"></div>${skeleton(2)}</div>`).join("")}</div>`;
+    setTimeout(() => { if (box.isConnected) drawDesigns(box, id); }, 15000);
+    return;
+  }
+  if (!opts.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const pending = d.pending;
+  const src = o => `/api/agency/design/file?project_id=${encodeURIComponent(id)}&name=${encodeURIComponent(o.file_name)}`;
+  const swatch = o => Object.entries(o.direction?.palette || {}).slice(0, 6).map(([k, v]) =>
+    /^#[0-9a-f]{3,8}$/i.test(v) ? `<i style="background:${v}" title="${esc(k)} ${esc(v)}"></i>` : "").join("");
+  const type = o => [o.direction?.type?.display, o.direction?.type?.text].filter(Boolean).join(" / ");
+  box.innerHTML = `<div class="panel-h"><div>
+      <h2>${pending ? "Pick a design" : d.chosen ? "The chosen design" : "Design samples"}</h2>
+      <div class="sub">${pending ? "Two homepages, two different directions. The build follows the one you pick."
+        : d.chosen ? `Design ${esc(d.chosen.toUpperCase())} was picked for the build.` : ""}${d.round > 1 ? ` Round ${d.round}.` : ""}</div></div>
+      <span class="r dpick-dev" role="group" aria-label="Preview size">
+        <button class="btn sm pri" data-dev="desktop" aria-pressed="true">Desktop</button>
+        <button class="btn sm" data-dev="mobile" aria-pressed="false">Mobile</button></span></div>
+    <div class="panel-b dpick-grid">${opts.map(o => `<article class="dopt ${d.chosen === o.key ? "chosen" : ""}">
+        <div class="dframe"><iframe src="${src(o)}" title="Design ${esc(o.key.toUpperCase())}: ${esc(o.name)}" loading="lazy"
+          sandbox="allow-scripts" tabindex="-1"></iframe></div>
+        <div class="dopt-b">
+          <div class="dopt-h"><span class="dopt-k">${esc(o.key.toUpperCase())}</span><h3>${esc(o.name)}</h3>
+            ${d.chosen === o.key ? tag("Chosen", "t-ok") : ""}</div>
+          <p>${esc(o.idea || "")}</p>
+          <div class="dopt-m"><span class="dsw" aria-label="Palette">${swatch(o)}</span>${type(o) ? `<span class="s">${esc(type(o))}</span>` : ""}</div>
+          <div class="dopt-a">${pending ? `<button class="btn pri" data-pick="${esc(o.key)}">${icon("check")} Use this design</button>` : ""}
+            <a class="btn" href="${src(o)}" target="_blank" rel="noopener">${icon("ext")} Full size</a></div>
+        </div></article>`).join("")}</div>
+    ${pending ? `<div class="panel-f dpick-ask">
+      <label for="dpFeedback">Not quite right? Tell Sofia what to change and she'll come back with two new directions.</label>
+      <div class="dpick-ask-r"><textarea id="dpFeedback" rows="2" placeholder="For example: warmer and friendlier, less corporate, show families, keep the dark option but make it calmer"></textarea>
+        <span class="dpick-ask-b"><button class="btn" id="dpRedo">${icon("refresh")} Ask Sofia for new designs</button>
+        <button class="linkbtn" id="dpTalk">${icon("send")} Talk it through with Sofia</button></span></div></div>` : ""}`;
+  // each sample renders at a real 1440px desktop width, scaled to fit its card
+  const fit = () => box.querySelectorAll(".dframe").forEach(f => f.style.setProperty("--k", (f.clientWidth / 1440).toFixed(4)));
+  fit(); new ResizeObserver(fit).observe(box);
+  box.querySelectorAll("[data-dev]").forEach(b => b.addEventListener("click", () => {
+    box.classList.toggle("mobile", b.dataset.dev === "mobile");
+    box.querySelectorAll("[data-dev]").forEach(x => { x.classList.toggle("pri", x === b); x.setAttribute("aria-pressed", String(x === b)); });
+  }));
+  box.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => {
+    box.querySelectorAll("[data-pick]").forEach(x => x.disabled = true);
+    try {
+      await apiPost("/api/agency/design/pick", { approval_id: pending.id, choice: b.dataset.pick });
+      toast(`Design ${b.dataset.pick.toUpperCase()} it is. The build carries on.`);
+      await refresh(); drawDesigns(box, id);
+    } catch (e) { box.querySelectorAll("[data-pick]").forEach(x => x.disabled = false); toast(String(e.message || e), true); }
+  }));
+  const redo = box.querySelector("#dpRedo");
+  if (redo) redo.addEventListener("click", async () => {
+    const fb = box.querySelector("#dpFeedback").value.trim();
+    if (!fb) { box.querySelector("#dpFeedback").focus(); toast("Tell Sofia what to change first.", true); return; }
+    redo.disabled = true;
+    try {
+      await apiPost("/api/agency/runs/redo", { run_id: d.run_id, stage: "design_directions", feedback: fb });
+      toast("Sofia is on it. Two new directions in a few minutes.");
+      await refresh(); drawDesigns(box, id);
+    } catch (e) { redo.disabled = false; toast(String(e.message || e), true); }
+  });
+  const talk = box.querySelector("#dpTalk");
+  if (talk) talk.addEventListener("click", () => openTeamChat("lumen", id, { draft: box.querySelector("#dpFeedback").value.trim() }));
 }
 
 /* ---------------- autopilot: a scheduled SEO campaign for a live site ---------------- */
@@ -264,7 +369,9 @@ async function drawAutopilot(box, id) {
 
 /* ---------------- tabs ---------------- */
 function overviewTab(p, c, run, tasks, approvals, audit) {
-  return `<div class="grid">
+  return `${p.playbook === "website_build" || (run && run.playbook === "website_build")
+      ? `<section class="panel dpick" id="dpPanel" hidden></section>` : ""}
+    <div class="grid">
     <section class="panel s7"><div class="panel-h"><div><h2>Brief</h2></div></div>
       <div class="panel-b"><div style="font:400 13.5px/1.65 var(--sans);color:var(--tx-2);white-space:pre-wrap">${
         esc(p.brief || "No brief recorded.")}</div>
@@ -279,6 +386,9 @@ function overviewTab(p, c, run, tasks, approvals, audit) {
           <dt>Updated</dt><dd>${ago(p.updated_at)}</dd>
         </dl></div></section>
     <div class="s5">
+      ${run ? `<section class="panel" style="margin-bottom:var(--gap)">
+        <div class="panel-h"><div><h2>Your team on this project</h2><div class="sub">Ask anyone about their work, or for changes</div></div></div>
+        <div class="panel-b flush">${teamRows(run)}</div></section>` : ""}
       <section class="panel" id="apPanel" style="margin-bottom:var(--gap)">
         <div class="panel-h"><div><h2>Autopilot</h2><div class="sub">A fresh SEO campaign on a schedule</div></div></div>
         <div class="panel-b" id="apBody">${skeleton(1)}</div></section>

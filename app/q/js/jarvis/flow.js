@@ -286,4 +286,7 @@ function animate() {
 }
 
 /* for tests */
+/** Whisper on this PC is installed: Jarvis listens with it too. */
+export const hasWhisper = () => !!(ears && ears.installed);
+
 export const _internals = { editable, CORRECTION };

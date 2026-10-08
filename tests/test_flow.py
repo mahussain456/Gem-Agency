@@ -116,11 +116,13 @@ class WhisperFlowTests(_Db):
         self.assertEqual(out["text"], "We should ship it on Monday.")
         self.assertEqual((out["provider"], out["ears"]), ("local", "whisper"))
 
-    def test_a_change_of_mind_goes_to_the_model(self):
-        with self.whisper("Launch on Thursday, no wait, Friday."),                 mock.patch.object(jarvis, "_quick", return_value={"text": "Launch on Friday.", "provider": "chatgpt"}) as model:
-            out = jarvis.dictate("dictate", b"\0" * 32000)
-        model.assert_called_once()
-        self.assertEqual(out["text"], "Launch on Friday.")
+    def test_a_change_of_mind_it_cannot_place_goes_to_the_model(self):
+        said = "Launch on Thursday, no wait, let us talk to the client about it first."
+        with self.whisper(said), mock.patch.object(
+                jarvis, "_quick", return_value={"text": "Let's talk to the client first.", "provider": "chatgpt"}) as model:
+            out = jarvis.dictate("dictate", b"\0" * 32000)
+        model.assert_called_once()
+        self.assertEqual(out["text"], "Let's talk to the client first.")
         self.assertEqual(out["ears"], "whisper")
 
     def test_an_edit_always_uses_the_model(self):

@@ -221,7 +221,8 @@ def _context(run_id: str, project: dict[str, Any]) -> dict[str, Any]:
         "url": project.get("url", "") or "",
     }
     with agency._conn() as conn:
-        for row in conn.execute("SELECT stage_id, kind, content FROM artifacts WHERE run_id=?", (run_id,)):
+        for row in conn.execute("SELECT stage_id, kind, content FROM artifacts WHERE run_id=? "
+                                "ORDER BY created_at, rowid", (run_id,)):
             val: Any = row["content"]
             if row["kind"] == "json":
                 try:
@@ -248,7 +249,9 @@ def _execute_run(run_id: str) -> None:
         if current["state"] == "cancelled":
             return
         st = next((s for s in current["stages"] if s["stage_id"] == stage["id"]), None)
-        if st and st["state"] == "done":
+        if st is None:
+            continue  # added to the playbook after this run started: the run keeps its own steps
+        if st["state"] == "done":
             continue  # already completed on an earlier pass (resume after gate)
 
         _set_run(run_id, stage_index=idx)
@@ -364,17 +367,21 @@ def _complete_json_via(provider: str, prompt: str, agent: str) -> dict[str, Any]
              "no commentary before or after the JSON.")
     attempt_prompt = prompt
     last: Exception | None = None
-    for _ in range(2):
+    reply = ""
+    for _ in range(3):
         res = providers.complete(attempt_prompt, provider=provider, agent=agent,
                                  system=guard, fallback=True, json_mode=True)
+        reply = res.get("text", "")
         try:
-            res["data"] = llm.extract_json(res["text"])
+            res["data"] = llm.extract_json(reply)
             return res
         except llm.LLMError as exc:
             last = exc
             attempt_prompt = (f"{prompt}\n\nYour previous reply was not valid JSON. "
                               f"Reply again with JSON only.")
-    raise last or llm.LLMError("no JSON produced")
+    # say what came back, so a failure can be understood rather than guessed at
+    raise llm.LLMError(f"{last or 'no JSON produced'} after 3 tries; the last reply began: "
+                       f"{' '.join(str(reply).split())[:240]!r}")
 
 
 def _strip_fences(text: str) -> str:
@@ -397,6 +404,9 @@ def _run_tool(stage: dict, ctx: dict, project: dict, run_id: str) -> tuple[str, 
         report = audit.audit_page(url)
         return (json.dumps(report, ensure_ascii=False, indent=2), "json",
                 f"score {report['score']} · {sum(report['counts'].values())} findings · verified fetch")
+
+    if tool == "design_samples":
+        return _design_samples(ctx, project, run_id)
 
     if tool == "audit_artifact":
         path = _built_file(project)
@@ -657,6 +667,188 @@ def _run_tool(stage: dict, ctx: dict, project: dict, run_id: str) -> tuple[str, 
                 f"{len(with_volume)}/{len(capped)} measured · ${round(cost, 4)} · {stored} stored")
 
     raise ValueError(f"unknown tool '{tool}'")
+
+
+# ---------------------------------------------------------------- design samples
+
+SAMPLE_PROMPT = """You are Kwame Mensah, the agency's UI prototyper. Build a complete, production-quality homepage
+for this website in ONE design direction. It is a sample the client will judge side by side with a second,
+very different direction, so it must look finished and unmistakably like its world.
+
+THE DIRECTION (follow it exactly):
+{direction}
+
+POSITIONING:
+{positioning}
+
+HOMEPAGE COPY (use these words; you may shorten for layout, never invent claims or numbers):
+{copy}
+{feedback}
+
+Build: hero (H1, subhead, primary and secondary call to action), proof, how it works, differentiators, questions and
+answers, final call to action, footer. Responsive from 360px to 1440px. One complete HTML5 document, all CSS in one
+<style> block, no JavaScript except a few lines for the one motion moment if needed.
+
+{craft}
+
+Reply with the HTML document only: no explanation, no markdown fences."""
+
+
+def _design_samples(ctx: dict, project: dict, run_id: str) -> tuple[str, str, str]:
+    """Kwame builds a homepage for each of Sofia's two directions, in parallel,
+    then each is photographed at desktop and mobile size."""
+    import threading
+    plan = ctx.get("design_directions")
+    directions = plan.get("directions", []) if isinstance(plan, dict) else []
+    directions = [d for d in directions if isinstance(d, dict)][:2]
+    if len(directions) < 2:
+        raise ValueError("the design directions stage did not produce two directions")
+    with agency._conn() as conn:
+        rounds = conn.execute("SELECT COUNT(*) AS n FROM artifacts WHERE run_id=? AND stage_id='design_samples'",
+                              (run_id,)).fetchone()["n"]
+    rnd = rounds + 1
+    results: dict[str, Any] = {}
+
+    def make(i: int, d: dict) -> None:
+        key = "ab"[i]
+        try:
+            prompt = SAMPLE_PROMPT.format(
+                direction=json.dumps(d, ensure_ascii=False, indent=2)[:3000],
+                positioning=str(ctx.get("positioning") or "")[:2000],
+                copy=str(ctx.get("copy") or "")[:5000],
+                craft=playbooks.DESIGN_CRAFT,
+                feedback=playbooks._feedback(ctx, "design_samples"))
+            res = providers.complete(prompt, provider=DEFAULT_PROVIDER, agent="stitch", fallback=True)
+            html = _strip_fences(res["text"])
+            if "<html" not in html.lower():
+                raise ValueError("the model did not return an HTML document")
+            name = f"design-r{rnd}-{key}.html"
+            path = Path(_write_file(project, name, html))
+            shots = {}
+            try:
+                for shot in browser.capture_set(browser.file_url(path), _project_dir(project) / f"design-r{rnd}-{key}",
+                                                viewports=("desktop", "mobile")):
+                    if shot.get("path"):
+                        shots[shot.get("viewport") or Path(shot["path"]).stem] = shot["path"]
+            except Exception as exc:                    # pictures are a convenience; the page is the deliverable
+                shots["error"] = str(exc)[:200]
+            results[key] = {"key": key, "name": d.get("name") or f"Design {key.upper()}", "idea": d.get("idea", ""),
+                            "direction": d, "file": str(path), "file_name": name, "shots": shots,
+                            "provider": res.get("provider", ""), "seconds": res.get("seconds", 0),
+                            "tokens_out": res.get("tokens_out", 0)}
+        except Exception as exc:
+            results[key] = {"key": key, "error": f"{type(exc).__name__}: {exc}"[:400]}
+
+    threads = [threading.Thread(target=make, args=(i, d), daemon=True) for i, d in enumerate(directions)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=900)
+    options = [results.get(k) or {"key": k, "error": "timed out"} for k in "ab"]
+    failed = [o for o in options if o.get("error")]
+    if failed:
+        raise RuntimeError("; ".join(f"design {o['key'].upper()}: {o['error']}" for o in failed))
+    out = {"round": rnd, "options": options, "how_they_differ": plan.get("how_they_differ", "")}
+    note = " · ".join(f"{o['name']}: {o['provider']} {o['seconds']}s" for o in options)
+    return json.dumps(out, ensure_ascii=False, indent=2), "json", f"round {rnd} · {note}"
+
+
+def design_state(project_id: str) -> dict[str, Any]:
+    """The latest design round of this project's newest website run, and the pick waiting on it."""
+    with agency._conn() as conn:
+        run = conn.execute("SELECT * FROM pipeline_runs WHERE project_id=? AND playbook='website_build' "
+                           "ORDER BY created_at DESC LIMIT 1", (project_id,)).fetchone()
+        if not run:
+            return {"run_id": "", "options": [], "pending": None}
+        art = conn.execute("SELECT content, created_at FROM artifacts WHERE run_id=? AND stage_id='design_samples' "
+                           "ORDER BY created_at DESC, rowid DESC LIMIT 1", (run["id"],)).fetchone()
+        pick = conn.execute("SELECT content FROM artifacts WHERE run_id=? AND stage_id='design_pick' "
+                            "ORDER BY created_at DESC, rowid DESC LIMIT 1", (run["id"],)).fetchone()
+        pending = conn.execute("SELECT id, title, created_at FROM approvals WHERE status='pending' AND kind='design' "
+                               "AND project_id=? ORDER BY created_at DESC LIMIT 1", (project_id,)).fetchone()
+        stages = {r["stage_id"]: r["state"] for r in conn.execute(
+            "SELECT stage_id, state FROM stage_runs WHERE run_id=?", (run["id"],))}
+    data = json.loads(art["content"]) if art else {}
+    chosen = (json.loads(pick["content"]).get("choice") if pick else "") or ""
+    return {"run_id": run["id"], "run_state": run["state"], "round": data.get("round", 0),
+            "options": [{k: v for k, v in o.items() if k != "file"} for o in data.get("options", [])],
+            "how_they_differ": data.get("how_they_differ", ""), "chosen": chosen,
+            "pending": dict(pending) if pending else None,
+            "working": stages.get("design_directions") == "running" or stages.get("design_samples") == "running"}
+
+
+def design_file(project_id: str, name: str) -> Path:
+    """A design sample page, confined to the project's own folder."""
+    import re as _re
+    if not _re.fullmatch(r"design-r\d{1,3}-[ab]\.html", name or ""):
+        raise KeyError("no such design file")
+    project = _project(project_id)
+    if not project:
+        raise KeyError("project not found")
+    path = (_project_dir(project) / name).resolve()
+    if path.parent != _project_dir(project).resolve() or not path.is_file():
+        raise KeyError("no such design file")
+    return path
+
+
+def pick_design(approval_id: str, choice: str) -> dict[str, Any]:
+    """The operator picked design A or B: record it, then let the run continue."""
+    if choice not in ("a", "b"):
+        raise ValueError("pick design a or b")
+    with agency._conn() as conn:
+        row = conn.execute("SELECT * FROM approvals WHERE id=? AND status='pending' AND kind='design'",
+                           (approval_id,)).fetchone()
+    if not row:
+        raise KeyError("no design is waiting to be picked")
+    payload = json.loads(row["payload"] or "{}")
+    run_id, stage_id = payload.get("run_id", ""), payload.get("stage_id", "")
+    project = _project(row["project_id"])
+    _store_artifact(run_id, row["project_id"], {"id": stage_id, "title": "Pick a design"},
+                    json.dumps({"choice": choice}), "json")
+    agency.approval_decide(approval_id, "approved", design_picked=True)
+    with agency._conn() as conn:
+        agency.log_activity(conn, "design_picked", "project", row["project_id"], {"choice": choice, "run_id": run_id})
+    return {"choice": choice, "run_id": run_id, "project": project["name"] if project else ""}
+
+
+def redo_from(run_id: str, stage_id: str, feedback: str = "", by: str = "operator") -> dict[str, Any]:
+    """Redo one stage, and everything after it, with the operator's feedback.
+
+    Earlier work is kept (artifacts are history, and the newest one wins), any
+    approval still waiting in the redone part is withdrawn, and the run is
+    queued again. A run that is busy right now is never interrupted."""
+    run = get_run(run_id)
+    pb = playbooks.get(run["playbook"])
+    ids = [s["id"] for s in pb["stages"]]
+    if stage_id not in ids:
+        raise ValueError(f"{stage_id} is not a step of this run")
+    if run["state"] in ("running", "queued"):
+        raise ValueError("this run is working right now; ask again when the current step finishes")
+    redo = ids[ids.index(stage_id):]
+    project = _project(run["project_id"])
+    with agency._conn() as conn:
+        for sid in redo:
+            conn.execute("UPDATE stage_runs SET state='pending', error='', detail='', started_at='', finished_at='' "
+                         "WHERE run_id=? AND stage_id=?", (run_id, sid))
+        for a in conn.execute("SELECT id, payload FROM approvals WHERE status='pending' AND project_id=?",
+                              (run["project_id"],)).fetchall():
+            try:
+                pl = json.loads(a["payload"] or "{}")
+            except json.JSONDecodeError:
+                pl = {}
+            if pl.get("run_id") == run_id and pl.get("stage_id") in redo:
+                conn.execute("UPDATE approvals SET status='withdrawn', decided_at=?, decided_by=? WHERE id=?",
+                             (agency.now_iso(), by, a["id"]))
+        conn.execute("UPDATE pipeline_runs SET state='queued', error='', updated_at=? WHERE id=?",
+                     (agency.now_iso(), run_id))
+        agency.log_activity(conn, "stage_redo", "project", run["project_id"],
+                            {"run_id": run_id, "stage": stage_id, "steps": len(redo), "by": by})
+    if feedback.strip():
+        _store_artifact(run_id, run["project_id"], {"id": f"feedback_{stage_id}", "title": "Feedback"},
+                        feedback.strip()[:2000], "markdown")
+    ensure_worker()
+    _jobs.put(run_id)
+    return {"run_id": run_id, "redo": redo, "project": project["name"] if project else ""}
 
 
 def _project_dir(project: dict) -> Path:

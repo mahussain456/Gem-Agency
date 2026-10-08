@@ -41,6 +41,49 @@ def _ctx(context: dict[str, Any], key: str, limit: int = 4000) -> str:
     return str(val)[:limit]
 
 
+# What separates a designed page from an assembled one. Given to every stage
+# that draws a page (the two design samples, the build and the repair).
+DESIGN_CRAFT = """DESIGN QUALITY BAR (a senior design director will judge this):
+- Commit to the direction's world. Every choice (type, colour, spacing, shapes, imagery) serves it; when torn between safe and committed, commit.
+- Typography carries the page: a characterful display face and a readable text face from Google Fonts (the ONLY external request allowed: one <link> to fonts.googleapis.com with display=swap, plus a full system fallback stack). Obvious size and weight steps; display text up to 6rem with tracking no tighter than -0.04em; body 16-18px, line-height 1.5-1.7, measure 65-75ch; balanced headings (text-wrap: balance).
+- Colour: define tokens in :root and use them everywhere. Body and placeholder text contrast at least 4.5:1, large text 3:1. On coloured surfaces tint secondary text from that hue, never plain grey.
+- Layout: real composition, not a stack of identical centred sections. Vary rhythm: tight groups, generous separation, more space above a heading than below it. Asymmetry, scale contrast and edge-to-edge moments where the direction calls for them.
+- Imagery: no photos are available, so draw it. Art-directed inline SVG or CSS compositions (illustration, pattern, abstract product or place, typographic art) that belong to this direction. Never grey boxes, never "image here" placeholders, never stock-icon clip-art.
+- Icons: one consistent set of authored inline SVG icons, same stroke and size. No emoji or Unicode glyphs as icons.
+- Motion: one authored moment (for example a hero reveal), exponential ease-out from an already-visible state, transform/opacity/clip-path only, and everything disabled under prefers-reduced-motion.
+- Finish the browser surfaces: ::selection, caret-color, :focus-visible rings, link underline offset, scrollbar colours, tabular numerals for figures, all from the palette.
+- States: hover, focus and active on every control; buttons name their action.
+REFUSE these defaults: an eyebrow/kicker label above a heading; section numbers 01/02/03; rows of same-size cards with icon + heading + text as the page structure; nested cards; gradient text; glass/blur as decoration; a coloured border-left/right thicker than 1px on cards or callouts; hard offset block shadows; the big-number hero-metric template; monospace as a costume; Arial/Impact/system fonts as the display voice; "innovative", "seamless", "cutting-edge", "elevate", "unlock"."""
+
+
+def _feedback(c: dict[str, Any], stage_id: str) -> str:
+    """The operator's notes when they asked for this stage to be redone."""
+    fb = c.get(f"feedback_{stage_id}")
+    if not fb:
+        return ""
+    return (f"\nTHE CLIENT REVIEWED THE PREVIOUS ROUND AND ASKED FOR CHANGES. This round must answer this feedback "
+            f"directly (do not repeat the rejected directions):\n{str(fb)[:1500]}\n")
+
+
+def _chosen_design(c: dict[str, Any]) -> str:
+    """The direction and sample the operator picked at the design gate."""
+    import json
+    pick = c.get("design_pick") if isinstance(c.get("design_pick"), dict) else {}
+    key = str(pick.get("choice") or "")
+    samples = c.get("design_samples") if isinstance(c.get("design_samples"), dict) else {}
+    option = next((o for o in samples.get("options", []) if o.get("key") == key), None)
+    if not option:
+        return "(no design was picked; design a strong, specific page in the spirit of the copy)"
+    html = ""
+    try:
+        from pathlib import Path
+        html = Path(option["file"]).read_text(encoding="utf-8", errors="replace")[:20000]
+    except Exception:
+        pass
+    return ("DIRECTION:\n" + json.dumps(option.get("direction", {}), ensure_ascii=False, indent=2)[:2500]
+            + "\n\nAPPROVED SAMPLE HTML (start from this):\n" + (html or "(sample file missing)"))
+
+
 SKIP_REBUILD_BELOW = 0.15   # p(worth rebuilding) under which the repair stage is skipped
 
 
@@ -182,6 +225,49 @@ Constraints: one idea per sentence, no adjective stacking, no "innovative/seamle
 {HOUSE_RULES}""",
         },
         {
+            "id": "design_directions", "title": "Two design directions", "kind": "json", "agent": "lumen",
+            "output": "json",
+            "prompt": lambda c: f"""You are Sofia Marino, the agency's designer. Propose TWO genuinely different art directions
+for this website's homepage. The client will see both as built samples and pick one.
+
+Positioning and audience:
+{_ctx(c, 'positioning', 2500)}
+
+Homepage copy (the words are fixed; you design around them):
+{_ctx(c, 'copy', 2500)}
+{_feedback(c, 'design_directions')}
+The two directions must differ on at least three of these axes: light vs dark ground; serif vs sans display
+voice; airy and editorial vs dense and structured; warm vs cool palette; illustrated vs typographic imagery;
+calm vs energetic motion. Both must suit THIS audience; neither may be a safe "generic SaaS" page.
+Name each after its world, not its colours ("Harbour Morning", not "Blue Theme").
+
+Reply with JSON exactly in this shape:
+{{"directions": [
+  {{"key": "a", "name": "2-3 word name", "idea": "one sentence: the world this page lives in and why it fits the audience",
+    "mood": ["3-5 words"],
+    "palette": {{"ground": "#hex", "surface": "#hex", "ink": "#hex", "muted": "#hex", "accent": "#hex", "accent_ink": "#hex"}},
+    "type": {{"display": "a Google Fonts family", "text": "a Google Fonts family", "notes": "scale, weight, tracking, case"}},
+    "layout": "how the page is composed: grid, rhythm, where the hero sits, how sections differ",
+    "signature": "the one memorable element a visitor will remember",
+    "imagery": "what is drawn (inline SVG/CSS) and in what style",
+    "motion": "the one authored motion moment",
+    "avoid": ["what would break this world"]}},
+  {{"key": "b", ...same fields...}}],
+ "how_they_differ": "one sentence"}}
+
+{DESIGN_CRAFT}
+
+{HOUSE_RULES}""",
+        },
+        {
+            "id": "design_samples", "title": "Build both design samples", "kind": "tool", "tool": "design_samples",
+            "agent": "stitch", "output": "json",
+        },
+        {
+            "id": "design_pick", "title": "Pick a design", "kind": "gate", "gate_kind": "design",
+            "gate_detail": "Two homepage designs are ready. Pick one to build, or ask Sofia for new designs with your feedback.",
+        },
+        {
             "id": "seo_plan", "title": "On-page SEO plan", "kind": "json", "agent": "rank",
             "output": "json",
             "prompt": lambda c: f"""Sitemap:
@@ -244,6 +330,10 @@ Include at minimum: Organization or LocalBusiness, WebSite with SearchAction, an
             "output": "html", "writes_file": "index.html",
             "prompt": lambda c: f"""Build the homepage as a single self-contained HTML file.
 
+THE CHOSEN DESIGN (the client picked this direction and approved this sample; build the full page in exactly
+this visual world: reuse its tokens, typography, components, imagery style and motion. Extend it, do not restyle it):
+{_chosen_design(c)}
+
 COPY (use this text — do not rewrite it):
 {_ctx(c, 'copy', 5000)}
 
@@ -254,7 +344,7 @@ JSON-LD to embed:
 {_ctx(c, 'schema', 2500)}
 
 Requirements:
-- One complete HTML5 document. All CSS inline in a <style> block. No external requests of any kind (no CDN, no web fonts, no tracking) — the file must render offline.
+- One complete HTML5 document. All CSS inline in a <style> block. The only external request allowed is the Google Fonts stylesheet the chosen design uses (no CDN scripts, no tracking, no hotlinked images).
 - Correct <title>, meta description, canonical, viewport, lang, and Open Graph tags.
 - Exactly one H1; sequential heading levels; semantic landmarks (header/nav/main/section/footer).
 - Every image an inline SVG placeholder with meaningful alt text — do not hotlink images.
@@ -264,6 +354,8 @@ Requirements:
 - Include a visible published/updated date and author line.
 
 Reply with the HTML document only — no explanation, no markdown fences.
+
+{DESIGN_CRAFT}
 
 {HOUSE_RULES}""",
         },
@@ -304,7 +396,7 @@ Rules for the repair:
 - Where a layout defect names an element and an overhang in pixels, fix that element specifically —
   wrap long words, reduce the size at that breakpoint, or constrain the width. Do not hide overflow.
 - Preserve the constraints of the original build: one complete HTML5 document, all CSS inline in a
-  <style> block, no external requests of any kind, inline SVG placeholders only.
+  <style> block, no external requests except its Google Fonts stylesheet, drawn inline SVG imagery only.
 - If a listed defect cannot be fixed without breaking something else, leave it and add an HTML comment
   at the end of <body> saying which one and why.
 

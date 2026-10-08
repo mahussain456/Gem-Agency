@@ -520,6 +520,102 @@ def needs_model(text: str) -> bool:
     return bool(_NEEDS_MODEL.search(text or ""))
 
 
+# ---- "no wait": a change of mind, resolved on this PC ----
+#
+# "Launch on Thursday, no wait, Friday" means "Launch on Friday". The words
+# after the marker replace some words before it; which ones is decided by
+# rules that are only used when they are sure:
+#   anchor  the correction starts with a word that is also just before the
+#           marker: "at the cafe, no wait, at the office" -> from that word
+#   kind    it starts with a day, month, number, time or Name, and the same
+#           kind of word is in the last three before the marker -> from there
+#   short   a one or two word correction replaces as many words: "open
+#           growth, no wait, approvals" -> "open approvals"
+#   scratch "scratch that" / "delete that" drops the sentence before it
+# Anything else is left for the model, never guessed.
+
+_CHANGE = re.compile(r"[,;]?\s*\b(?:no,?\s+wait|wait,?\s+no|no,?\s+no|i mean|or rather|sorry)\b[,;:]?\s*", re.I)
+_SCRATCH = re.compile(r"[,;]?\s*\b(?:scratch that|delete that|forget that)\b[.!,;]?\s*", re.I)
+_DAYS = "monday tuesday wednesday thursday friday saturday sunday today tomorrow tonight yesterday".split()
+_MONTHS = "january february march april may june july august september october november december".split()
+_NUM = re.compile(r"^(?:\$?\d[\d,.]*%?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+                  r"fifteen|twenty|thirty|forty|fifty|hundred|thousand|noon|midnight|\d{1,2}(?::\d\d)?(?:am|pm)?)$", re.I)
+
+
+def _kind(word: str, first_in_sentence: bool = False) -> str:
+    w = word.strip(".,;:!?\"'()").lower()
+    if w in _DAYS:
+        return "day"
+    if w in _MONTHS:
+        return "month"
+    if _NUM.match(w):
+        return "number"
+    if word[:1].isupper() and not first_in_sentence and w not in ("i",):
+        return "name"
+    return ""
+
+
+def resolve_corrections(text: str) -> tuple[str, bool]:
+    """Apply spoken corrections. Returns (text, every correction was resolved)."""
+    t = " ".join(str(text or "").split())
+    # "scratch that": drop the sentence (or clause) just before it
+    while True:
+        m = _SCRATCH.search(t)
+        if not m:
+            break
+        head = t[:m.start()]
+        cut = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+        t = (head[:cut + 1] + " " if cut >= 0 else "") + t[m.end():]
+        t = t.strip()
+    sure = True
+    for _ in range(4):                                       # a few changes of mind in one breath
+        m = _CHANGE.search(t)
+        if not m:
+            break
+        before, after = t[:m.start()].rstrip(" ,;"), t[m.end():].lstrip(" ,;")
+        stop = max(before.rfind(". "), before.rfind("! "), before.rfind("? "))
+        sent_head, left = (before[:stop + 2], before[stop + 2:]) if stop >= 0 else ("", before)
+        lw = left.split()
+        if not lw or not after:
+            sure = False
+            break
+        rest = re.split(r"(?<=[.!?,;])\s", after, maxsplit=1)
+        fix = rest[0]                                        # the correction, up to its first pause
+        fw = fix.split()
+        if not re.search(r"\w", fix):                       # "you know what I mean." is not a correction
+            sure = False
+            break
+        # "I mean" and "sorry" are often just talk ("I'm sorry, we're late"): only a sure match counts
+        loose = not re.search(r"i mean|sorry", m.group(0), re.I)
+        first = fw[0].strip(".,;:!?").lower()
+        start = None
+        # anchor: the correction repeats a word from just before the marker
+        for i in range(len(lw) - 1, max(-1, len(lw) - 9), -1):
+            if lw[i].strip(".,;:!?").lower() == first and first not in ("the", "a", "an", "and", "to", "i"):
+                start = i
+                break
+        # kind: day for day, number for number, Name for Name
+        if start is None:
+            k = _kind(fw[0])
+            if k:
+                for i in range(len(lw) - 1, max(-1, len(lw) - 4), -1):
+                    if _kind(lw[i], first_in_sentence=(i == 0)) == k:
+                        start = i
+                        break
+        # short: one or two words swap for as many
+        if start is None and loose and len(fw) <= 2 and len(lw) >= len(fw):
+            start = len(lw) - len(fw)
+        if start is None:
+            sure = False
+            break
+        joined = " ".join(lw[:start] + [after])
+        t = (sent_head + joined).strip()
+    t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+    if t and t[0].islower():
+        t = t[0].upper() + t[1:]
+    return t, sure and not _CHANGE.search(t)
+
+
 def dictate(mode: str, pcm: bytes, heard: str = "", selection: str = "", field: str = "") -> dict[str, Any]:
     """Flow with Whisper: transcribe on this PC, then clean up only if needed.
 
@@ -545,8 +641,9 @@ def dictate(mode: str, pcm: bytes, heard: str = "", selection: str = "", field: 
     if not text:
         raise ValueError("nothing was heard")
     heard_in = round(time.time() - began, 2)
-    if ears == "whisper" and mode != "edit" and not needs_model(text):
-        out = strip_fillers(text) if mode == "dictate" else strip_fillers(text).rstrip(".")
+    fixed, sure = resolve_corrections(strip_fillers(text)) if ears == "whisper" else (text, False)
+    if ears == "whisper" and mode != "edit" and sure and not needs_model(_CHANGE.sub(" ", _SCRATCH.sub(" ", text))):
+        out = fixed if mode == "dictate" else fixed.rstrip(".")
         if out:
             return {"text": out, "raw": text, "polished": True, "provider": "local", "ears": ears,
                     "seconds": round(time.time() - began, 2), "heard_in": heard_in}
